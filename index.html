@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VARIALO</title>
+    <meta name="description" data-i18n-content="meta.description" content="" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-inner">
+        <div class="brand">
+          <h1 class="wordmark">VARIALO</h1>
+          <p class="tagline" data-i18n="hero.tagline"></p>
+        </div>
+        <div class="masthead-tools">
+          <div class="lang-switch" role="group" data-i18n-aria="lang.label" aria-label="Lingua">
+            <button type="button" class="lang-button" data-lang="it">IT</button>
+            <button type="button" class="lang-button" data-lang="en">EN</button>
+          </div>
+        </div>
+      </div>
+      <details class="about">
+        <summary data-i18n="hero.about"></summary>
+        <div class="about-body">
+          <p data-i18n="hero.aboutText1"></p>
+          <p data-i18n="hero.aboutText2"></p>
+          <p data-i18n="hero.aboutText3"></p>
+          <p class="credits" data-i18n="hero.credits"></p>
+        </div>
+      </details>
+      <ol class="steps">
+        <li><span class="step-num">1</span><span data-i18n="steps.1"></span></li>
+        <li><span class="step-num">2</span><span data-i18n="steps.2"></span></li>
+        <li><span class="step-num">3</span><span data-i18n="steps.3"></span></li>
+      </ol>
+    </header>
+
+    <main class="workspace">
+      <section class="panel space-panel" aria-labelledby="space-title">
+        <div class="panel-head">
+          <h2 id="space-title" data-i18n="space.title"></h2>
+          <button id="clear-button" class="text-button" type="button" data-i18n="space.clear"></button>
+        </div>
+
+        <div class="axis-toggle" role="radiogroup" aria-label="axes">
+          <label class="axis-option">
+            <input type="radio" name="axis-count" value="1" checked />
+            <span class="axis-option-body">
+              <svg viewBox="0 0 40 40" aria-hidden="true"><line x1="6" y1="20" x2="34" y2="20" /><circle cx="6" cy="20" r="3" /><circle cx="34" cy="20" r="3" /></svg>
+              <span data-i18n="space.axis1"></span>
+              <small class="axis-option-count" data-count="2"></small>
+            </span>
+          </label>
+          <label class="axis-option">
+            <input type="radio" name="axis-count" value="2" />
+            <span class="axis-option-body">
+              <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="7" width="26" height="26" /><circle cx="7" cy="7" r="3" /><circle cx="33" cy="7" r="3" /><circle cx="7" cy="33" r="3" /><circle cx="33" cy="33" r="3" /></svg>
+              <span data-i18n="space.axis2"></span>
+              <small class="axis-option-count" data-count="4"></small>
+            </span>
+          </label>
+          <label class="axis-option">
+            <input type="radio" name="axis-count" value="3" />
+            <span class="axis-option-body">
+              <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="13" y="5" width="22" height="22" /><rect x="5" y="13" width="22" height="22" /><line x1="13" y1="5" x2="5" y2="13" /><line x1="35" y1="5" x2="27" y2="13" /><line x1="13" y1="27" x2="5" y2="35" /><line x1="35" y1="27" x2="27" y2="35" /></svg>
+              <span data-i18n="space.axis3"></span>
+              <small class="axis-option-count" data-count="8"></small>
+            </span>
+          </label>
+        </div>
+
+        <div id="design-space" class="design-space"></div>
+        <p class="hint" data-i18n="space.hint"></p>
+
+        <div class="actions">
+          <button id="build-button" class="button primary" type="button" data-i18n="space.build"></button>
+          <button id="download-button" class="button" type="button" disabled data-i18n="space.download"></button>
+        </div>
+
+        <div class="status" aria-live="polite">
+          <span id="status-badge" class="status-badge idle"></span>
+          <p id="status-text" class="status-text"></p>
+        </div>
+      </section>
+
+      <div class="results">
+        <section id="report-panel" class="panel report-panel" hidden aria-labelledby="report-title">
+          <div class="panel-head">
+            <h2 id="report-title" data-i18n="report.title"></h2>
+          </div>
+          <div id="report"></div>
+        </section>
+
+        <section class="panel info-panel" aria-labelledby="info-title">
+          <div class="panel-head">
+            <h2 id="info-title" data-i18n="info.title"></h2>
+          </div>
+          <div class="info-export">
+            <h3 data-i18n="info.exportTitle"></h3>
+            <div class="export-fields">
+              <label class="field">
+                <span data-i18n="info.familyName"></span>
+                <input id="family-name" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.familyPlaceholder" />
+              </label>
+              <label class="field">
+                <span data-i18n="info.designer"></span>
+                <input id="designer" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.designerPlaceholder" />
+              </label>
+            </div>
+            <p class="field-note" data-i18n="info.exportNote"></p>
+          </div>
+          <div class="info-sources">
+            <h3 data-i18n="info.sourcesTitle"></h3>
+            <div id="font-info" class="info-table-wrap"></div>
+          </div>
+        </section>
+
+        <section class="panel preview-panel" aria-labelledby="preview-title">
+          <div class="panel-head">
+            <h2 id="preview-title" data-i18n="preview.title"></h2>
+            <label class="size-control">
+              <span data-i18n="preview.size"></span>
+              <input id="size-slider" type="range" min="24" max="240" value="96" />
+            </label>
+          </div>
+          <div id="preview-stage" class="preview-stage" contenteditable="true" spellcheck="false"></div>
+          <div id="axis-sliders" class="axis-sliders"></div>
+          <div id="matrix-block" class="matrix-block" hidden>
+            <h3 data-i18n="preview.matrix"></h3>
+            <p id="matrix-note" class="matrix-note"></p>
+            <div id="instance-grid" class="instance-grid"></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>VARIALO</span>
+      <span>Pyodide + fontTools</span>
+    </footer>
+  </body>
+</html>

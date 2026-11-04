@@ -458,7 +458,8 @@ def _check_outlines(fonts, recordings, labels, common_glyphs):
     for code, name in cmap.items():
         chars.setdefault(name, chr(code))
 
-    for name in common_glyphs:
+    # Real glyphs first; .notdef and other technical glyphs at the end.
+    for name in sorted(common_glyphs, key=lambda n: n.startswith(".")):
         base = recordings[0][name]
         blocking = []
         soft = []

@@ -306,8 +306,8 @@ code,
 }
 
 .axis-option-body svg {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   margin-bottom: 4px;
   fill: none;
   stroke: var(--ink);
@@ -370,16 +370,10 @@ code,
   stroke-width: 1.5;
 }
 
-.axis-label rect {
-  fill: var(--paper-light);
-  stroke: var(--ink);
-  stroke-width: 2;
-}
-
 .axis-label text {
   font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 17px;
+  font-weight: 700;
   text-anchor: middle;
 }
 
@@ -950,6 +944,59 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 700;
   outline: 2px solid var(--ink);
   outline-offset: -2px;
+}
+
+/* A whole row that differs between fonts: data in yellow, row name lighter yellow. */
+.info-table tr.mismatch-row td {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+.info-table tr.mismatch-row th {
+  background: var(--yellow-soft);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Fold-out sections (details) with the yellow +/− marker */
+.fold > summary {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  margin-right: 0.7em;
+  background: var(--yellow);
+  border: 2px solid var(--ink);
+}
+
+.fold[open] > summary::before {
+  content: "\2212";
+}
+
+.fold > summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.fold[open] > summary {
+  margin-bottom: 12px;
 }
 
 /* ------------------------------------------------------------------ */

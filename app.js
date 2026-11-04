@@ -91,7 +91,7 @@ const DIAGRAMS = {
       [310, 70, 310, 290, "Y"],
     ],
     vertices: { a: [90, 70, "above"], b: [310, 70, "above"], c: [90, 290, "below"], d: [310, 290, "below"] },
-    labels: [[200, 70, "X"], [90, 180, "Y"]],
+    labels: [[200, 330, "X"], [48, 150, "Y"]],
   },
   3: {
     // Front face = A B C D (axis Z = 0), back face = E F G H (axis Z = 1000).
@@ -120,7 +120,7 @@ const DIAGRAMS = {
       g: [170, 270, "above", "back"],
       h: [380, 270, "below", "back"],
     },
-    labels: [[185, 130, "X"], [80, 235, "Y"], [125, 95, "Z"]],
+    labels: [[185, 378, "X"], [40, 205, "Y"], [108, 76, "Z"]],
   },
 };
 
@@ -146,12 +146,10 @@ function renderDiagram() {
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("class", "axis-label");
     group.setAttribute("transform", `translate(${x} ${y})`);
-    const rect = document.createElementNS(SVG_NS, "rect");
-    Object.entries({ x: -13, y: -13, width: 26, height: 26 }).forEach(([k, v]) => rect.setAttribute(k, v));
     const text = document.createElementNS(SVG_NS, "text");
     text.setAttribute("dy", "0.35em");
     text.textContent = axis;
-    group.append(rect, text);
+    group.append(text);
     svg.append(group);
   }
   dom.designSpace.append(svg);
@@ -373,6 +371,7 @@ async function handleBuild() {
     refreshVertices();
 
     if (!result.ok) {
+      document.getElementById("info-sources").open = true;
       setStatus("error", "status.notCompatible");
       dom.reportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
@@ -619,6 +618,7 @@ function renderFontInfo() {
   const reference = state.fontInfo.a;
   for (const [key, read, mustMatch] of INFO_ROWS) {
     const row = el("tr", "");
+    let rowMismatch = false;
     const th = el("th", "", t(key));
     th.scope = "row";
     row.append(th);
@@ -634,8 +634,13 @@ function renderFontInfo() {
       if (mustMatch && file && reference && slot.key !== "a" && value !== "" && value !== read(reference, state.files.a)) {
         cell.classList.add("mismatch");
         cell.title = t("info.mismatch");
+        rowMismatch = true;
       }
       row.append(cell);
+    }
+    if (rowMismatch) {
+      row.classList.add("mismatch-row");
+      document.getElementById("info-sources").open = true;
     }
     body.append(row);
   }
@@ -696,8 +701,8 @@ function renderReport() {
     if (fixes.length) {
       if (fixes.includes("fix.nodes") || fixes.includes("fix.contours")) fixes.push("fix.order");
       fixes.push("fix.editor");
-      const box = el("div", "fix-box");
-      box.append(el("h3", "", t("report.howToFix")));
+      const box = el("details", "fix-box fold");
+      box.append(el("summary", "", t("report.howToFix")));
       const list = el("ol", "fix-list");
       for (const fix of fixes) list.append(el("li", "", t(fix)));
       box.append(list);
@@ -772,9 +777,10 @@ function renderGlyphCard(report, frame) {
     const caption = el("figcaption", "");
     const label = slotLabel(master.master) + (master.master === 0 ? ` (${t("report.reference")})` : "");
     caption.append(el("strong", "", label));
-    if (master.problems.length) {
+    const lines = master.master === 0 ? referenceLines(report) : master.problems.map(shortProblem);
+    if (lines.length) {
       const list = el("ul", "");
-      for (const problem of master.problems) list.append(el("li", "", tm(problem)));
+      for (const line of lines) list.append(el("li", "", line));
       caption.append(list);
     }
     figure.append(caption);
@@ -782,6 +788,27 @@ function renderGlyphCard(report, frame) {
   }
   card.append(row);
   return card;
+}
+
+// Problems that compare counts: the reference value is shown once, under the
+// reference glyph; the other glyphs only show their own value.
+const COUNT_CODES = new Set(["contour_count", "node_count", "point_count"]);
+
+function shortProblem(problem) {
+  if (!COUNT_CODES.has(problem.code)) return tm(problem);
+  return t(`short.${problem.code}`, { ...problem.params, value: problem.params.other });
+}
+
+function referenceLines(report) {
+  const lines = [];
+  for (const master of report.masters) {
+    for (const problem of master.problems) {
+      if (!COUNT_CODES.has(problem.code)) continue;
+      const line = t(`short.${problem.code}`, { ...problem.params, value: problem.params.base });
+      if (!lines.includes(line)) lines.push(line);
+    }
+  }
+  return lines;
 }
 
 function sharedBounds(masters, frame) {

@@ -49,61 +49,78 @@
     </header>
 
     <main class="workspace">
-      <section class="panel space-panel" aria-labelledby="space-title">
-        <div class="panel-head">
-          <h2 id="space-title" data-i18n="space.title"></h2>
-          <button id="clear-button" class="text-button" type="button" data-i18n="space.clear"></button>
-        </div>
-
-        <div class="axis-toggle" role="radiogroup" aria-label="axes">
-          <label class="axis-option">
-            <input type="radio" name="axis-count" value="1" checked />
-            <span class="axis-option-body">
-              <svg viewBox="0 0 40 40" aria-hidden="true"><line x1="6" y1="20" x2="34" y2="20" /><circle cx="6" cy="20" r="3" /><circle cx="34" cy="20" r="3" /></svg>
-              <span data-i18n="space.axis1"></span>
-              <small class="axis-option-count" data-count="2"></small>
-            </span>
-          </label>
-          <label class="axis-option">
-            <input type="radio" name="axis-count" value="2" />
-            <span class="axis-option-body">
-              <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="7" width="26" height="26" /><circle cx="7" cy="7" r="3" /><circle cx="33" cy="7" r="3" /><circle cx="7" cy="33" r="3" /><circle cx="33" cy="33" r="3" /></svg>
-              <span data-i18n="space.axis2"></span>
-              <small class="axis-option-count" data-count="4"></small>
-            </span>
-          </label>
-          <label class="axis-option">
-            <input type="radio" name="axis-count" value="3" />
-            <span class="axis-option-body">
-              <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="13" y="5" width="22" height="22" /><rect x="5" y="13" width="22" height="22" /><line x1="13" y1="5" x2="5" y2="13" /><line x1="35" y1="5" x2="27" y2="13" /><line x1="13" y1="27" x2="5" y2="35" /><line x1="35" y1="27" x2="27" y2="35" /><circle cx="13" cy="5" r="2.5" /><circle cx="35" cy="5" r="2.5" /><circle cx="13" cy="27" r="2.5" /><circle cx="35" cy="27" r="2.5" /><circle cx="5" cy="13" r="2.5" /><circle cx="27" cy="13" r="2.5" /><circle cx="5" cy="35" r="2.5" /><circle cx="27" cy="35" r="2.5" /></svg>
-              <span data-i18n="space.axis3"></span>
-              <small class="axis-option-count" data-count="8"></small>
-            </span>
-          </label>
-        </div>
-
-        <div id="design-space" class="design-space"></div>
-        <p class="hint" data-i18n="space.hint"></p>
-
-        <div class="actions">
-          <button id="build-button" class="button primary" type="button" data-i18n="space.build"></button>
-          <button id="download-button" class="button" type="button" disabled data-i18n="space.download"></button>
-        </div>
-
-        <div class="status" aria-live="polite">
-          <span id="status-badge" class="status-badge idle"></span>
-          <p id="status-text" class="status-text"></p>
-        </div>
-      </section>
-
-      <div class="results">
-        <section id="report-panel" class="panel report-panel" hidden aria-labelledby="report-title">
+      <div class="work-row top-row">
+        <section id="library-panel" class="panel library-panel" aria-labelledby="library-title">
           <div class="panel-head">
-            <h2 id="report-title" data-i18n="report.title"></h2>
+            <h2 id="library-title" data-i18n="library.title"></h2>
+            <button id="import-button" class="text-button" type="button" data-i18n="library.import"></button>
+            <input id="import-input" type="file" accept=".ttf,.otf,font/ttf,font/otf" multiple hidden />
           </div>
-          <div id="report"></div>
+          <div id="library" class="library"></div>
+          <p id="library-selection" class="library-selection" aria-live="polite"></p>
         </section>
 
+        <section class="panel space-panel" aria-labelledby="space-title">
+          <div class="panel-head">
+            <h2 id="space-title" data-i18n="space.title"></h2>
+            <button id="clear-button" class="text-button" type="button" data-i18n="space.clear"></button>
+          </div>
+
+          <div class="axis-toggle" role="radiogroup" aria-label="axes">
+            <label class="axis-option">
+              <input type="radio" name="axis-count" value="1" checked />
+              <span class="axis-option-body">
+                <svg viewBox="0 0 40 40" aria-hidden="true"><line x1="6" y1="20" x2="34" y2="20" /><circle cx="6" cy="20" r="3" /><circle cx="34" cy="20" r="3" /></svg>
+                <span data-i18n="space.axis1"></span>
+                <small class="axis-option-count" data-count="2"></small>
+              </span>
+            </label>
+            <label class="axis-option">
+              <input type="radio" name="axis-count" value="2" />
+              <span class="axis-option-body">
+                <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="7" width="26" height="26" /><circle cx="7" cy="7" r="3" /><circle cx="33" cy="7" r="3" /><circle cx="7" cy="33" r="3" /><circle cx="33" cy="33" r="3" /></svg>
+                <span data-i18n="space.axis2"></span>
+                <small class="axis-option-count" data-count="4"></small>
+              </span>
+            </label>
+            <label class="axis-option">
+              <input type="radio" name="axis-count" value="3" />
+              <span class="axis-option-body">
+                <svg viewBox="0 0 40 40" aria-hidden="true"><line x1="5" y1="17" x2="21" y2="17" /><line x1="5" y1="35" x2="21" y2="35" /><line x1="5" y1="17" x2="5" y2="35" /><line x1="21" y1="17" x2="21" y2="35" /><line x1="19" y1="5" x2="35" y2="5" /><line x1="35" y1="5" x2="35" y2="23" /><line x1="19" y1="23" x2="35" y2="23" class="hidden-edge" /><line x1="19" y1="5" x2="19" y2="23" class="hidden-edge" /><line x1="5" y1="17" x2="19" y2="5" /><line x1="21" y1="17" x2="35" y2="5" /><line x1="21" y1="35" x2="35" y2="23" /><line x1="5" y1="35" x2="19" y2="23" class="hidden-edge" /><circle cx="5" cy="17" r="2.5" /><circle cx="21" cy="17" r="2.5" /><circle cx="5" cy="35" r="2.5" /><circle cx="21" cy="35" r="2.5" /><circle cx="19" cy="5" r="2.5" /><circle cx="35" cy="5" r="2.5" /><circle cx="19" cy="23" r="2.5" /><circle cx="35" cy="23" r="2.5" /></svg>
+                <span data-i18n="space.axis3"></span>
+                <small class="axis-option-count" data-count="8"></small>
+              </span>
+            </label>
+          </div>
+
+          <div id="design-space" class="design-space"></div>
+          <p class="hint" data-i18n="space.hint"></p>
+
+          <div class="axes-block">
+            <h3 data-i18n="axis.title"></h3>
+            <div id="axis-rows" class="axis-rows"></div>
+          </div>
+
+          <div class="actions">
+            <button id="build-button" class="button primary" type="button" data-i18n="space.build"></button>
+            <button id="download-button" class="button" type="button" disabled data-i18n="space.download"></button>
+          </div>
+
+          <div class="status" aria-live="polite">
+            <span id="status-badge" class="status-badge idle"></span>
+            <p id="status-text" class="status-text"></p>
+          </div>
+        </section>
+      </div>
+
+      <section id="report-panel" class="panel report-panel" hidden aria-labelledby="report-title">
+        <div class="panel-head">
+          <h2 id="report-title" data-i18n="report.title"></h2>
+        </div>
+        <div id="report"></div>
+      </section>
+
+      <div class="work-row bottom-row">
         <section class="panel info-panel" aria-labelledby="info-title">
           <div class="panel-head">
             <h2 id="info-title" data-i18n="info.title"></h2>
@@ -137,14 +154,13 @@
             </label>
           </div>
           <div id="preview-stage" class="preview-stage" contenteditable="true" spellcheck="false"></div>
-          <div id="axis-sliders" class="axis-sliders"></div>
+          <p id="preview-values" class="preview-values"></p>
           <div id="matrix-block" class="matrix-block" hidden>
             <h3 data-i18n="preview.matrix"></h3>
             <p id="matrix-note" class="matrix-note"></p>
             <div id="instance-grid" class="instance-grid"></div>
           </div>
         </section>
-
       </div>
     </main>
 

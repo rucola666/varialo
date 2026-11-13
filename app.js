@@ -1,32 +1,46 @@
 import { applyStaticTexts, getLanguage, initialLanguage, setLanguage, t, tm } from "./i18n.js";
-import { readFontInfo } from "./fontinfo.js";
+import { AXIS_LETTERS, applyPreset, defaultAxis, presetForTag, PRESETS, tagFromName, validateAxis, valueAt } from "./axes.js";
+import { el, formatNumber, variationCss } from "./dom.js";
+import { corners, importFile, itemName, renderLibrary, resolve } from "./library.js";
+import { renderReport } from "./report.js";
+import { renderAxisRows, renderSpace, updateAxisRows, updateSpace } from "./space.js";
 
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
-const AXIS_LETTERS = ["X", "Y", "Z"];
-const SVG_NS = "http://www.w3.org/2000/svg";
+const KEYS = "abcdefgh";
 
 const state = {
   pyodide: null,
+  library: [], // imported fonts (see library.js)
+  selected: null, // {item, child} chosen in the library, waiting for a vertex
   axisCount: 1,
-  files: {}, // vertex key -> File
-  vertexFonts: {}, // vertex key -> {family, face}
-  fontInfo: {}, // vertex key -> metadata read from the file
-  exportEdited: { family: false, designer: false }, // user typed their own values
+  vertices: {}, // vertex key -> {item, child}
+  axes: [0, 1, 2].map(defaultAxis),
+  positions: [0, 0, 0], // where the preview is on each axis, 0 = start, 1 = end
+  exportEdited: { family: false, designer: false },
   status: { kind: "idle", key: "status.start", params: {} },
-  result: null, // last engine result (inspection or build)
+  result: null,
   build: null, // {bytes, fileName, axes}
+  building: false,
+  rebuildTimer: null,
   previewFace: null,
   previewUrl: null,
-  axisValues: {},
+  fsPaths: {}, // library item id -> path in the Pyodide file system
 };
 
 const $ = (selector) => document.querySelector(selector);
 const dom = {
+  library: $("#library"),
+  libraryPanel: $("#library-panel"),
+  importInput: $("#import-input"),
+  importButton: $("#import-button"),
+  selection: $("#library-selection"),
   designSpace: $("#design-space"),
+  axisRows: $("#axis-rows"),
   axisRadios: Array.from(document.querySelectorAll('input[name="axis-count"]')),
   familyName: $("#family-name"),
   designer: $("#designer"),
   fontInfo: $("#font-info"),
+  infoSources: $("#info-sources"),
   buildButton: $("#build-button"),
   downloadButton: $("#download-button"),
   clearButton: $("#clear-button"),
@@ -35,8 +49,8 @@ const dom = {
   reportPanel: $("#report-panel"),
   report: $("#report"),
   previewStage: $("#preview-stage"),
+  previewValues: $("#preview-values"),
   sizeSlider: $("#size-slider"),
-  axisSliders: $("#axis-sliders"),
   matrixBlock: $("#matrix-block"),
   matrixNote: $("#matrix-note"),
   instanceGrid: $("#instance-grid"),
@@ -44,252 +58,275 @@ const dom = {
 };
 
 // ---------------------------------------------------------------------------
-// Design space model
+// Model helpers
 // ---------------------------------------------------------------------------
 
-function makeConfig(axisCount) {
-  const axes = AXIS_LETTERS.slice(0, axisCount).map((letter) => ({
-    letter,
-    tag: `BLN${letter}`,
-    name: `blend_${letter.toLowerCase()}`,
-    label: `Blend ${letter}`,
-  }));
-  const slots = [];
-  for (let index = 0; index < 2 ** axisCount; index++) {
-    const coords = axes.map((_, axisIndex) => ((index >> axisIndex) & 1 ? 1000 : 0));
-    const active = axes.filter((_, axisIndex) => coords[axisIndex] === 1000).map((a) => a.letter);
-    slots.push({ key: String.fromCharCode(97 + index), coords, active });
-  }
-  return { axes, slots };
-}
+const activeKeys = () => KEYS.slice(0, 2 ** state.axisCount).split("");
+const activeAxes = () => state.axes.slice(0, state.axisCount);
+const isLive = () => Boolean(state.build && state.previewFace);
 
-function slotTitle(slot) {
-  if (slot.active.length === 0) return t("slot.base");
-  if (slot.active.length === 1) return t("slot.end", { letters: slot.active[0] });
-  return t("slot.corner", { letters: slot.active.join(" + ") });
+function sources() {
+  const out = {};
+  for (const key of activeKeys()) out[key] = resolve(state.library, state.vertices[key]);
+  return out;
 }
 
 function slotLabel(index) {
-  const slot = makeConfig(state.axisCount).slots[index];
-  return `${slot.key.toUpperCase()} · ${slotTitle(slot)}`;
+  const key = KEYS[index];
+  const source = resolve(state.library, state.vertices[key]);
+  return source ? `${key.toUpperCase()} · ${source.label}` : key.toUpperCase();
 }
 
-// Geometry of the three diagrams (SVG user units).
-const DIAGRAMS = {
-  1: {
-    viewBox: [400, 170],
-    edges: [[60, 85, 340, 85, "X"]],
-    vertices: { a: [60, 85, "above"], b: [340, 85, "above"] },
-    labels: [[200, 128, "X"]],
-  },
-  2: {
-    viewBox: [400, 360],
-    edges: [
-      [90, 70, 310, 70, "X"],
-      [90, 290, 310, 290, "X"],
-      [90, 70, 90, 290, "Y"],
-      [310, 70, 310, 290, "Y"],
-    ],
-    vertices: { a: [90, 70, "above"], b: [310, 70, "above"], c: [90, 290, "below"], d: [310, 290, "below"] },
-    labels: [[200, 330, "X"], [48, 150, "Y"]],
-  },
-  3: {
-    // Front face = A B C D (axis Z = 0), back face = E F G H (axis Z = 1000).
-    viewBox: [440, 400],
-    edges: [
-      [170, 60, 380, 60, "X", "back"],
-      [380, 60, 380, 270, "Y", "back"],
-      [380, 270, 170, 270, "X", "back"],
-      [170, 270, 170, 60, "Y", "back"],
-      [80, 130, 170, 60, "Z"],
-      [290, 130, 380, 60, "Z"],
-      [80, 340, 170, 270, "Z"],
-      [290, 340, 380, 270, "Z"],
-      [80, 130, 290, 130, "X"],
-      [290, 130, 290, 340, "Y"],
-      [290, 340, 80, 340, "X"],
-      [80, 340, 80, 130, "Y"],
-    ],
-    vertices: {
-      a: [80, 130, "above"],
-      b: [290, 130, "above"],
-      c: [80, 340, "below"],
-      d: [290, 340, "below"],
-      e: [170, 60, "above", "back"],
-      f: [380, 60, "above", "back"],
-      g: [170, 270, "above", "back"],
-      h: [380, 270, "below", "back"],
-    },
-    labels: [[185, 378, "X"], [40, 205, "Y"], [108, 76, "Z"]],
-  },
-};
-
-function renderDiagram() {
-  const diagram = DIAGRAMS[state.axisCount];
-  const [width, height] = diagram.viewBox;
-  const { slots } = makeConfig(state.axisCount);
-
-  dom.designSpace.innerHTML = "";
-  dom.designSpace.style.aspectRatio = `${width} / ${height}`;
-  dom.designSpace.dataset.axes = String(state.axisCount);
-
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("aria-hidden", "true");
-  for (const [x1, y1, x2, y2, axis, depth] of diagram.edges) {
-    const line = document.createElementNS(SVG_NS, "line");
-    Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, v));
-    line.setAttribute("class", `edge edge-${axis}${depth ? ` edge-${depth}` : ""}`);
-    svg.append(line);
-  }
-  for (const [x, y, axis] of diagram.labels) {
-    const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("class", "axis-label");
-    group.setAttribute("transform", `translate(${x} ${y})`);
-    const text = document.createElementNS(SVG_NS, "text");
-    text.setAttribute("dy", "0.35em");
-    text.textContent = axis;
-    group.append(text);
-    svg.append(group);
-  }
-  dom.designSpace.append(svg);
-
-  for (const slot of slots) {
-    const [x, y, side, depth] = diagram.vertices[slot.key];
-    const vertex = document.createElement("div");
-    vertex.className = `vertex label-${side}${depth ? ` is-${depth}` : ""}`;
-    vertex.style.left = `${((x / width) * 100).toFixed(3)}%`;
-    vertex.style.top = `${((y / height) * 100).toFixed(3)}%`;
-
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".ttf,.otf,font/ttf,font/otf";
-    input.className = "vertex-input";
-    input.tabIndex = -1;
-    input.addEventListener("change", (event) => {
-      void assignFile(slot.key, event.target.files?.[0] ?? null);
-      event.target.value = "";
-    });
-
-    const node = document.createElement("button");
-    node.type = "button";
-    node.className = "vertex-node";
-    node.dataset.key = slot.key;
-    node.addEventListener("click", () => input.click());
-    node.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      node.classList.add("dragover");
-    });
-    node.addEventListener("dragleave", () => node.classList.remove("dragover"));
-    node.addEventListener("drop", (event) => {
-      event.preventDefault();
-      node.classList.remove("dragover");
-      void assignFile(slot.key, event.dataTransfer?.files?.[0] ?? null);
-    });
-
-    const caption = document.createElement("span");
-    caption.className = "vertex-caption";
-    const letter = document.createElement("strong");
-    letter.textContent = slot.key.toUpperCase();
-    const fileName = document.createElement("span");
-    fileName.className = "vertex-file";
-    caption.append(letter, fileName);
-
-    vertex.append(input, node, caption);
-    dom.designSpace.append(vertex);
-  }
-  refreshVertices();
+function placementsOf(ref) {
+  return activeKeys()
+    .filter((key) => {
+      const placed = state.vertices[key];
+      return placed && placed.item === ref.item && (placed.child ?? null) === (ref.child ?? null);
+    })
+    .map((key) => key.toUpperCase());
 }
 
-function refreshVertices() {
-  const { slots } = makeConfig(state.axisCount);
-  const failing = failingMasters();
-  for (const slot of slots) {
-    const node = dom.designSpace.querySelector(`.vertex-node[data-key="${slot.key}"]`);
-    if (!node) continue;
-    const vertex = node.parentElement;
-    const file = state.files[slot.key];
-    const preview = state.vertexFonts[slot.key];
-    const coords = slot.coords.map((value, i) => `${AXIS_LETTERS[i]} ${value}`).join(" · ");
-    node.innerHTML = "";
-    node.classList.toggle("filled", Boolean(file));
-    node.classList.toggle("base", slot.key === "a");
-    vertex.classList.toggle("has-error", failing.has(slots.indexOf(slot)));
-    if (file && preview) {
-      const glyph = document.createElement("span");
-      glyph.className = "vertex-glyph";
-      glyph.style.fontFamily = `"${preview.family}", var(--font-display)`;
-      glyph.textContent = "A";
-      node.append(glyph);
-      node.title = `${t("slot.title", { vertex: slot.key.toUpperCase(), title: slotTitle(slot) })}\n${file.name}\n${coords}`;
-    } else {
-      node.textContent = "+";
-      node.title = `${t("slot.empty", { vertex: slot.key.toUpperCase() })}\n${coords}`;
-    }
-    node.setAttribute("aria-label", node.title);
-    const fileLabel = vertex.querySelector(".vertex-file");
-    fileLabel.textContent = file ? file.name : "";
-    fileLabel.title = file ? file.name : "";
-  }
-}
-
-function failingMasters() {
+function failingKeys() {
   const failing = new Set();
   for (const report of state.result?.glyphReports ?? []) {
-    for (const master of report.masters) {
-      if (master.problems.length) failing.add(master.master);
-    }
+    for (const master of report.masters) if (master.problems.length) failing.add(KEYS[master.master]);
   }
   return failing;
 }
 
-async function assignFile(key, file) {
-  if (!file) return;
-  if (!/\.(ttf|otf)$/i.test(file.name)) {
-    setStatus("error", "status.badFile", { name: file.name });
-    return;
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+async function importFiles(files) {
+  const added = [];
+  for (const file of files) {
+    const { item, error, params } = await importFile(file);
+    if (error) {
+      setStatus("error", error, params);
+      continue;
+    }
+    state.library.push(item);
+    added.push(item);
   }
-  state.files[key] = file;
-  const previous = state.vertexFonts[key];
-  if (previous) document.fonts.delete(previous.face);
-  delete state.vertexFonts[key];
-  const buffer = await file.arrayBuffer();
-  try {
-    state.fontInfo[key] = readFontInfo(buffer);
-  } catch (error) {
-    console.warn("Could not read font info of", file.name, error);
-    state.fontInfo[key] = null;
+  drawLibrary();
+  return added;
+}
+
+function drawLibrary() {
+  renderLibrary(dom.library, state.library, {
+    selected: state.selected,
+    placementsOf,
+    onSelect: (ref) => {
+      const same = state.selected && state.selected.item === ref.item && state.selected.child === ref.child;
+      state.selected = same ? null : ref;
+      drawLibrary();
+      drawSpace();
+    },
+    onRemove: (id) => {
+      const item = state.library.find((entry) => entry.id === id);
+      if (item?.face) document.fonts.delete(item.face);
+      state.library = state.library.filter((entry) => entry.id !== id);
+      delete state.fsPaths[id];
+      for (const key of KEYS) if (state.vertices[key]?.item === id) delete state.vertices[key];
+      if (state.selected?.item === id) state.selected = null;
+      placementsChanged();
+    },
+    onToggle: (id) => {
+      const item = state.library.find((entry) => entry.id === id);
+      item.open = !item.open;
+      drawLibrary();
+    },
+    onAxesChange: (id, axesUsed, pinned) => {
+      const item = state.library.find((entry) => entry.id === id);
+      item.axesUsed = axesUsed;
+      item.pinned = pinned;
+      for (const key of KEYS) if (state.vertices[key]?.item === id) delete state.vertices[key];
+      placementsChanged();
+    },
+  });
+  const selected = resolve(state.library, state.selected);
+  dom.selection.textContent = selected ? t("library.selected", { name: selected.label }) : t("library.hint");
+  dom.selection.classList.toggle("is-active", Boolean(selected));
+}
+
+function place(key, ref) {
+  state.vertices[key] = { item: ref.item, child: ref.child ?? null };
+  placementsChanged();
+}
+
+// A variable font folder fills all the vertices (if the number of corners
+// matches the design space, or the space is still empty).
+function fillFromFolder(item) {
+  const list = corners(item);
+  const axes = Math.log2(list.length);
+  const empty = activeKeys().every((key) => !state.vertices[key]);
+  if (axes !== state.axisCount) {
+    if (empty && axes >= 1 && axes <= 3) {
+      setAxisCount(axes, { keepVertices: true });
+    } else {
+      setStatus("error", "status.folderMismatch", {
+        name: itemName(item),
+        count: list.length,
+        vertices: 2 ** state.axisCount,
+      });
+      return;
+    }
   }
-  if (key === "a") prefillExport();
-  try {
-    const face = new FontFace(`Vertex-${key}-${Date.now()}`, buffer);
-    await face.load();
-    document.fonts.add(face);
-    state.vertexFonts[key] = { family: face.family, face };
-  } catch (error) {
-    console.warn("Preview of", file.name, "failed", error);
-  }
+  list.forEach((corner, index) => {
+    state.vertices[KEYS[index]] = { item: item.id, child: corner.index };
+  });
+  placementsChanged();
+}
+
+async function dropFiles(key, files) {
+  const added = await importFiles(files);
+  if (!added.length) return;
+  const first = added[0];
+  if (first.kind === "variable") fillFromFolder(first);
+  else if (key) place(key, { item: first.id, child: null });
+}
+
+function dropRef(key, data) {
+  const item = state.library.find((entry) => entry.id === data.item);
+  if (!item) return;
+  if (data.folder) fillFromFolder(item);
+  else if (key) place(key, data);
+}
+
+function clickVertex(key) {
+  if (!state.selected) return false;
+  place(key, state.selected);
+  state.selected = null;
+  drawLibrary();
+  drawSpace();
+  return true;
+}
+
+function placementsChanged() {
   clearResults();
-  refreshVertices();
+  suggestAxes();
+  prefillExport();
+  drawLibrary();
+  drawAxisRows();
+  drawSpace();
+  renderFontInfo();
   updateIdleStatus();
 }
 
-function setAxisCount(count) {
+// When both ends of an axis come from the same variable font and differ on
+// exactly one of its axes, propose that axis (unless the student edited it).
+function suggestAxes() {
+  for (let i = 0; i < state.axisCount; i++) {
+    if (state.axes[i].edited) continue;
+    const startRef = state.vertices.a;
+    const endRef = state.vertices[KEYS[1 << i]];
+    const start = resolve(state.library, startRef);
+    const end = resolve(state.library, endRef);
+    let suggestion = null;
+    if (start?.location && end?.location && startRef.item === endRef.item) {
+      const changed = Object.keys(start.location).filter((tag) => start.location[tag] !== end.location[tag]);
+      if (changed.length === 1) {
+        const tag = changed[0];
+        const fvarAxis = start.info.axes.find((axis) => axis.tag === tag);
+        const preset = presetForTag(tag);
+        suggestion = {
+          preset,
+          tag,
+          name: preset === "custom" ? fvarAxis?.name || tag : PRESETS[preset].name,
+          start: start.location[tag],
+          end: end.location[tag],
+          edited: false,
+          tagEdited: false,
+          suggested: true,
+        };
+      }
+    }
+    state.axes[i] = suggestion ?? defaultAxis(i);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Design space
+// ---------------------------------------------------------------------------
+
+function spaceContext() {
+  return {
+    axisCount: state.axisCount,
+    axes: state.axes,
+    sources: sources(),
+    selected: state.selected,
+    failing: failingKeys(),
+    isLive,
+    positions: () => state.positions,
+    onDropFiles: (key, files) => void dropFiles(key, files),
+    onDropRef: dropRef,
+    onClickVertex: clickVertex,
+    onMove: (index, value) => {
+      state.positions[index] = value;
+      updateLive();
+    },
+    onMovePoint: ([x, y]) => {
+      state.positions[0] = x;
+      state.positions[1] = y;
+      updateLive();
+    },
+    onPreset: (index, key) => {
+      state.axes[index] = applyPreset(state.axes[index], key, index);
+      drawAxisRows();
+      axesChanged();
+    },
+    onAxisInput: (index, patch) => {
+      const axis = { ...state.axes[index], ...patch, edited: true };
+      if ("name" in patch && axis.preset === "custom" && !axis.tagEdited) {
+        axis.tag = tagFromName(patch.name, AXIS_LETTERS[index]);
+      }
+      state.axes[index] = axis;
+      axesChanged();
+    },
+  };
+}
+
+function drawSpace() {
+  if (!dom.designSpace.querySelector(".space-svg") || dom.designSpace.dataset.axes !== String(state.axisCount)) {
+    renderSpace(dom.designSpace, spaceContext());
+  } else {
+    updateSpace(dom.designSpace, spaceContext());
+  }
+}
+
+function drawAxisRows() {
+  renderAxisRows(dom.axisRows, spaceContext());
+}
+
+function axesChanged() {
+  updateAxisRows(dom.axisRows, spaceContext());
+  updateSpace(dom.designSpace, spaceContext());
+  if (state.build || state.result?.ok === false) scheduleRebuild();
+}
+
+function updateLive() {
+  updateSpace(dom.designSpace, spaceContext());
+  updateAxisRows(dom.axisRows, spaceContext());
+  applyPreview();
+  renderMatrix();
+}
+
+function setAxisCount(count, { keepVertices = false } = {}) {
   if (state.axisCount === count) return;
   state.axisCount = count;
-  clearResults();
-  renderDiagram();
-  updateIdleStatus();
+  dom.axisRadios.forEach((radio) => {
+    radio.checked = Number(radio.value) === count;
+  });
+  if (!keepVertices) placementsChanged();
+  else {
+    drawAxisRows();
+    drawSpace();
+  }
 }
 
-function updateIdleStatus() {
-  const { slots } = makeConfig(state.axisCount);
-  const missing = slots.filter((slot) => !state.files[slot.key]).length;
-  if (missing) {
-    setStatus("idle", "status.start", { count: slots.length });
-  } else if (state.status.kind !== "working") {
-    setStatus("idle", "status.readyToBuild");
-  }
+function axisErrors() {
+  return activeAxes().some((axis) => validateAxis(axis, activeAxes()).some((p) => p.level === "error"));
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +343,14 @@ function renderStatus() {
   dom.statusBadge.textContent = t(`status.${kind}`);
   dom.statusBadge.className = `status-badge ${kind}`;
   dom.statusText.textContent = t(key, params);
+}
+
+function updateIdleStatus() {
+  const keys = activeKeys();
+  const missing = keys.filter((key) => !state.vertices[key]).length;
+  if (state.building) return;
+  if (missing) setStatus("idle", state.library.length ? "status.place" : "status.start", { count: keys.length });
+  else setStatus("idle", "status.readyToBuild");
 }
 
 // ---------------------------------------------------------------------------
@@ -328,37 +373,63 @@ async function ensureEngine() {
   return pyodide;
 }
 
-async function writeToFs(pyodide, file, key) {
-  const path = `/tmp/${key}-${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, "_")}`;
-  pyodide.FS.writeFile(path, new Uint8Array(await file.arrayBuffer()));
+async function fsPath(pyodide, item) {
+  if (state.fsPaths[item.id]) return state.fsPaths[item.id];
+  const path = `/tmp/${item.id}-${item.file.name.replace(/[^a-z0-9._-]/gi, "_")}`;
+  pyodide.FS.writeFile(path, new Uint8Array(await item.file.arrayBuffer()));
+  state.fsPaths[item.id] = path;
   return path;
 }
 
-async function handleBuild() {
-  const config = makeConfig(state.axisCount);
-  const missing = config.slots.filter((slot) => !state.files[slot.key]);
+function scheduleRebuild() {
+  clearTimeout(state.rebuildTimer);
+  state.rebuildTimer = setTimeout(() => void handleBuild({ silent: true }), 700);
+}
+
+async function handleBuild({ silent = false } = {}) {
+  if (state.building) {
+    scheduleRebuild();
+    return;
+  }
+  const keys = activeKeys();
+  const missing = keys.filter((key) => !resolve(state.library, state.vertices[key]));
   if (missing.length) {
-    setStatus("error", "status.missing", {
-      list: missing.map((slot) => slot.key.toUpperCase()).join(", "),
-    });
+    setStatus("error", "status.missing", { list: missing.map((key) => key.toUpperCase()).join(", ") });
+    return;
+  }
+  if (axisErrors()) {
+    setStatus("error", "status.axisErrors");
     return;
   }
 
-  clearResults();
+  if (!silent) clearResults();
+  state.building = true;
   dom.buildButton.disabled = true;
   try {
     const pyodide = await ensureEngine();
-    setStatus("working", "status.checking");
-    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 20)));
+    setStatus("working", silent ? "status.rebuilding" : "status.checking");
+    await new Promise((resolveFrame) => requestAnimationFrame(() => setTimeout(resolveFrame, 20)));
 
-    const paths = [];
-    for (const slot of config.slots) paths.push(await writeToFs(pyodide, state.files[slot.key], slot.key));
+    const resolved = keys.map((key) => resolve(state.library, state.vertices[key]));
+    const requestSources = [];
+    for (const source of resolved) {
+      requestSources.push({
+        path: await fsPath(pyodide, source.item),
+        location: source.location,
+        fileName: source.location ? `${source.file.name} (${source.shortLabel})` : source.file.name,
+        styleName: source.styleName,
+      });
+    }
     const outputPath = `/tmp/varialo-${Date.now()}.ttf`;
     const request = {
-      paths,
-      labels: config.slots.map((slot) => slot.key.toUpperCase()),
-      fileNames: config.slots.map((slot) => state.files[slot.key].name),
-      axes: config.axes.map(({ tag, name, label }) => ({ tag, name, label })),
+      sources: requestSources,
+      labels: keys.map((key) => key.toUpperCase()),
+      axes: activeAxes().map((axis) => ({
+        tag: axis.tag,
+        name: axis.name.trim(),
+        start: Number(axis.start),
+        end: Number(axis.end),
+      })),
       familyName: dom.familyName.value.trim() || null,
       designer: dom.designer.value.trim() || null,
     };
@@ -366,14 +437,16 @@ async function handleBuild() {
     const result = JSON.parse(buildFn(JSON.stringify(request), outputPath));
     buildFn.destroy?.();
     state.result = result;
-
-    renderReport();
-    refreshVertices();
+    renderReport(dom.reportPanel, dom.report, result, slotLabel);
 
     if (!result.ok) {
-      document.getElementById("info-sources").open = true;
+      state.build = null;
+      dom.downloadButton.disabled = true;
+      resetPreviewFont();
+      dom.infoSources.open = true;
+      drawSpace();
       setStatus("error", "status.notCompatible");
-      dom.reportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!silent) dom.reportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
 
@@ -381,16 +454,17 @@ async function handleBuild() {
     const fileBase = (result.familyName || "Varialo Variable").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
     state.build = { bytes, axes: result.axes, fileName: `${fileBase || "Varialo-Variable"}.ttf` };
     await loadPreviewFont(bytes);
-    renderSliders();
-    renderMatrix();
     dom.downloadButton.disabled = false;
+    updateLive();
+    drawSpace();
     setStatus("success", "status.ready");
   } catch (error) {
     console.error(error);
     state.result = { ok: false, issues: [], warnings: [], buildError: error.message || String(error) };
-    renderReport();
+    renderReport(dom.reportPanel, dom.report, state.result, slotLabel);
     setStatus("error", "status.engineFailed");
   } finally {
+    state.building = false;
     dom.buildButton.disabled = false;
   }
 }
@@ -412,10 +486,10 @@ function handleDownload() {
 // ---------------------------------------------------------------------------
 
 async function loadPreviewFont(bytes) {
-  resetPreviewFont();
   const url = URL.createObjectURL(new Blob([bytes], { type: "font/ttf" }));
   const face = new FontFace(`VarialoPreview-${Date.now()}`, `url(${url})`);
   await face.load();
+  resetPreviewFont();
   document.fonts.add(face);
   state.previewFace = face;
   state.previewUrl = url;
@@ -438,176 +512,126 @@ function renderPreviewPlaceholder() {
   dom.previewStage.classList.toggle("is-live", Boolean(state.previewFace));
 }
 
-function variationSettings(overrides = {}) {
-  return Object.entries({ ...state.axisValues, ...overrides })
-    .map(([tag, value]) => `"${tag}" ${value}`)
-    .join(", ");
+// Axis values of the built font at the given positions (0..1 per axis).
+function locationAt(positions = state.positions) {
+  const location = {};
+  (state.build?.axes ?? []).forEach((axis, i) => {
+    location[axis.tag] = valueAt(axis, positions[i] ?? 0);
+  });
+  return location;
 }
 
 function applyPreview() {
   dom.previewStage.style.fontSize = `${dom.sizeSlider.value}px`;
-  if (!state.previewFace) return;
+  dom.previewValues.textContent = "";
+  if (!isLive()) return;
+  const location = locationAt();
   dom.previewStage.style.fontFamily = `"${state.previewFace.family}", var(--font-display)`;
-  dom.previewStage.style.fontVariationSettings = variationSettings();
+  dom.previewStage.style.fontVariationSettings = variationCss(location);
+  dom.previewValues.textContent = Object.entries(location)
+    .map(([tag, value]) => `"${tag}" ${formatNumber(value)}`)
+    .join(", ");
   renderPreviewPlaceholder();
 }
 
-function renderSliders() {
-  dom.axisSliders.innerHTML = "";
-  state.axisValues = {};
-  if (!state.build) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = t("preview.empty");
-    dom.axisSliders.append(empty);
-    return;
-  }
-  for (const axis of state.build.axes) {
-    const letter = axis.tag.slice(-1);
-    state.axisValues[axis.tag] = axis.minimum;
-    const row = document.createElement("label");
-    row.className = "slider-row";
-    const name = document.createElement("span");
-    name.className = "slider-name";
-    name.innerHTML = `<b>${letter}</b> ${escapeHtml(t("axis.name", { letter }))} <code>${axis.tag}</code>`;
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = axis.minimum;
-    slider.max = axis.maximum;
-    slider.value = axis.minimum;
-    const value = document.createElement("output");
-    value.textContent = axis.minimum;
-    slider.dataset.tag = axis.tag;
-    slider.addEventListener("input", () => {
-      state.axisValues[axis.tag] = Number(slider.value);
-      value.textContent = slider.value;
-      applyPreview();
-      renderMatrix();
-    });
-    row.append(name, slider, value);
-    dom.axisSliders.append(row);
-  }
-}
-
-// Move the sliders (and the preview) to the values of a matrix cell.
-function setAxisValues(values) {
-  for (const [tag, value] of Object.entries(values)) {
-    state.axisValues[tag] = value;
-    const slider = dom.axisSliders.querySelector(`input[data-tag="${tag}"]`);
-    if (slider) {
-      slider.value = value;
-      slider.nextElementSibling.textContent = value;
-    }
-  }
-  applyPreview();
-  renderMatrix();
-}
-
-const MATRIX_STEPS = [0, 250, 500, 750, 1000];
+const STEPS = [0, 0.25, 0.5, 0.75, 1];
+const STEPS_1D = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
 
 function renderMatrix() {
   dom.instanceGrid.innerHTML = "";
-  if (!state.build || !state.previewFace) {
+  if (!isLive()) {
     dom.matrixBlock.hidden = true;
     return;
   }
   dom.matrixBlock.hidden = false;
-  const tags = state.build.axes.map((axis) => axis.tag);
-  const twoD = tags.length >= 2;
-  const rows = twoD ? MATRIX_STEPS : [null];
-  const columns = twoD ? MATRIX_STEPS : [0, 125, 250, 375, 500, 625, 750, 875, 1000];
+  const axes = state.build.axes;
+  const twoD = axes.length >= 2;
+  const columns = twoD ? STEPS : STEPS_1D;
+  const rows = twoD ? STEPS : [null];
   dom.instanceGrid.style.setProperty("--cols", columns.length);
   dom.instanceGrid.classList.toggle("one-d", !twoD);
   dom.matrixNote.textContent = [
     t("preview.matrixHint"),
-    tags.length === 3 ? t("preview.matrixZ", { value: state.axisValues.BLNZ ?? 0 }) : "",
-  ].filter(Boolean).join(" ");
+    axes.length === 3
+      ? t("preview.matrixZ", { tag: axes[2].tag, value: formatNumber(valueAt(axes[2], state.positions[2])) })
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  const corner = document.createElement("span");
-  corner.className = "matrix-head corner";
-  corner.textContent = twoD ? "Y↓ X→" : "X→";
-  dom.instanceGrid.append(corner);
-  for (const column of columns) {
-    const head = document.createElement("span");
-    head.className = "matrix-head";
-    head.textContent = column;
-    dom.instanceGrid.append(head);
-  }
+  dom.instanceGrid.append(el("span", "matrix-head corner", twoD ? `${axes[1].tag}↓ ${axes[0].tag}→` : `${axes[0].tag}→`));
+  for (const column of columns) dom.instanceGrid.append(el("span", "matrix-head", formatNumber(valueAt(axes[0], column))));
+  const near = (a, b) => Math.abs(a - b) < 0.004;
   for (const row of rows) {
-    const head = document.createElement("span");
-    head.className = "matrix-head";
-    head.textContent = row ?? "";
-    dom.instanceGrid.append(head);
+    dom.instanceGrid.append(el("span", "matrix-head", row === null ? "" : formatNumber(valueAt(axes[1], row))));
     for (const column of columns) {
-      const overrides = { [tags[0]]: column };
-      if (twoD) overrides[tags[1]] = row;
-      const cell = document.createElement("button");
+      const positions = [...state.positions];
+      positions[0] = column;
+      if (twoD) positions[1] = row;
+      const cell = el("button", "instance-cell", "A");
       cell.type = "button";
-      cell.className = "instance-cell";
-      cell.classList.toggle(
-        "is-current",
-        Object.entries(overrides).every(([tag, v]) => state.axisValues[tag] === v),
-      );
-      cell.addEventListener("click", () => setAxisValues(overrides));
+      cell.classList.toggle("is-current", near(state.positions[0], column) && (!twoD || near(state.positions[1], row)));
+      cell.addEventListener("click", () => {
+        state.positions[0] = column;
+        if (twoD) state.positions[1] = row;
+        updateLive();
+      });
+      const location = locationAt(positions);
       cell.style.fontFamily = `"${state.previewFace.family}", var(--font-display)`;
-      cell.style.fontVariationSettings = variationSettings(overrides);
-      cell.title = Object.entries(overrides).map(([tag, v]) => `${tag} ${v}`).join(" · ");
-      cell.textContent = "A";
+      cell.style.fontVariationSettings = variationCss(location);
+      cell.title = Object.entries(location)
+        .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
+        .join(" · ");
       dom.instanceGrid.append(cell);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Font summary
+// Font info
 // ---------------------------------------------------------------------------
 
-// Values for the exported font, taken from font A until the user edits them.
 function prefillExport() {
-  const info = state.fontInfo.a;
-  if (!state.exportEdited.family) {
-    dom.familyName.value = info?.familyName ? `${info.familyName} Variable` : "";
-  }
-  if (!state.exportEdited.designer) {
-    dom.designer.value = info?.designer || "";
-  }
+  const info = resolve(state.library, state.vertices.a)?.info;
+  if (!state.exportEdited.family) dom.familyName.value = info?.familyName ? `${info.familyName} Variable` : "";
+  if (!state.exportEdited.designer) dom.designer.value = info?.designer || "";
 }
 
+const normalisedOutline = (info) => (info.outline === "CFF2" ? "CFF" : info.outline);
+
 const INFO_ROWS = [
-  ["info.file", (info, file) => file?.name ?? ""],
-  ["info.family", (info) => info.familyName],
-  ["info.style", (info) => info.styleName],
-  ["info.designerRow", (info) => info.designer],
-  ["info.manufacturer", (info) => info.manufacturer],
-  ["info.version", (info) => info.version],
-  ["info.copyright", (info) => info.copyright],
-  ["info.format", (info) => info.outline, true],
-  ["info.upm", (info) => info.unitsPerEm, true],
-  ["info.glyphs", (info) => info.glyphCount, true],
-  ["info.weight", (info) => info.weightClass],
+  ["info.source", (source) => source.shortLabel],
+  ["info.family", (source) => source.info.familyName],
+  ["info.style", (source) => (source.location ? source.styleName : source.info.styleName)],
+  ["info.designerRow", (source) => source.info.designer],
+  ["info.manufacturer", (source) => source.info.manufacturer],
+  ["info.version", (source) => source.info.version],
+  ["info.copyright", (source) => source.info.copyright],
+  ["info.format", (source) => normalisedOutline(source.info), true],
+  ["info.upm", (source) => source.info.unitsPerEm, true],
+  ["info.glyphs", (source) => source.info.glyphCount, true],
   [
-    "info.axes",
-    (info) =>
-      info.axes.length
-        ? info.axes.map((axis) => `${axis.tag} ${axis.min}–${axis.max}`).join(", ")
+    "info.origin",
+    (source) =>
+      source.location
+        ? t("info.originVariable", { location: Object.entries(source.location).map(([tag, v]) => `${tag} ${formatNumber(v)}`).join(" · ") })
         : t("info.static"),
-    true,
   ],
 ];
 
 function renderFontInfo() {
-  const { slots } = makeConfig(state.axisCount);
-  const loaded = slots.filter((slot) => state.files[slot.key]);
+  const keys = activeKeys();
+  const all = sources();
   dom.fontInfo.innerHTML = "";
-  if (!loaded.length) {
+  if (!keys.some((key) => all[key])) {
     dom.fontInfo.append(el("p", "empty", t("info.empty")));
     return;
   }
   const table = el("table", "info-table");
   const head = el("tr", "");
   head.append(el("th", "", ""));
-  for (const slot of slots) {
-    const th = el("th", "info-col", slot.key.toUpperCase());
+  for (const key of keys) {
+    const th = el("th", "info-col", key.toUpperCase());
     th.scope = "col";
     head.append(th);
   }
@@ -615,32 +639,28 @@ function renderFontInfo() {
   thead.append(head);
   table.append(thead);
   const body = el("tbody", "");
-  const reference = state.fontInfo.a;
+  const reference = all.a;
   for (const [key, read, mustMatch] of INFO_ROWS) {
     const row = el("tr", "");
-    let rowMismatch = false;
+    let mismatch = false;
     const th = el("th", "", t(key));
     th.scope = "row";
     row.append(th);
-    for (const slot of slots) {
-      const info = state.fontInfo[slot.key];
-      const file = state.files[slot.key];
-      let value = "";
-      if (file && info && !info.error) value = read(info, file) ?? "";
-      else if (file && key === "info.file") value = file.name;
-      else if (file) value = "?";
-      const cell = el("td", "", value === "" ? (file ? "—" : "") : String(value));
+    for (const vertex of keys) {
+      const source = all[vertex];
+      const value = source ? read(source) ?? "" : "";
+      const cell = el("td", "", value === "" ? (source ? "—" : "") : String(value));
       if (String(value).length > 28) cell.title = String(value);
-      if (mustMatch && file && reference && slot.key !== "a" && value !== "" && value !== read(reference, state.files.a)) {
+      if (mustMatch && source && reference && vertex !== "a" && value !== "" && value !== read(reference)) {
         cell.classList.add("mismatch");
         cell.title = t("info.mismatch");
-        rowMismatch = true;
+        mismatch = true;
       }
       row.append(cell);
     }
-    if (rowMismatch) {
+    if (mismatch) {
       row.classList.add("mismatch-row");
-      document.getElementById("info-sources").open = true;
+      dom.infoSources.open = true;
     }
     body.append(row);
   }
@@ -649,290 +669,27 @@ function renderFontInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// Compatibility report
+// Reset / language / wiring
 // ---------------------------------------------------------------------------
-
-const FIX_FOR_CODE = {
-  node_count: "fix.nodes",
-  point_count: "fix.nodes",
-  point_types: "fix.nodes",
-  contour_count: "fix.contours",
-  missing_glyphs: "fix.glyphs",
-  extra_glyphs: "fix.glyphs",
-  mixed_outlines: "fix.outlines",
-  unknown_outlines: "fix.outlines",
-  upm: "fix.upm",
-  composite_mismatch: "fix.composite",
-  component_mismatch: "fix.composite",
-};
-
-function renderReport() {
-  const result = state.result;
-  dom.report.innerHTML = "";
-  if (!result) {
-    dom.reportPanel.hidden = true;
-    return;
-  }
-  dom.reportPanel.hidden = false;
-  dom.reportPanel.classList.toggle("is-ok", Boolean(result.ok));
-
-  const head = el("div", `report-verdict ${result.ok ? "ok" : "fail"}`);
-  head.append(
-    el("p", "verdict-title", t(result.ok ? "report.okTitle" : "report.failTitle")),
-    el("p", "verdict-text", t(result.ok ? "report.okText" : "report.failText")),
-  );
-  dom.report.append(head);
-
-  // General issues (not tied to one glyph)
-  const issues = (result.issues ?? []).filter((issue) => issue.code !== "outlines_incompatible");
-  if (issues.length) {
-    const list = el("ul", "issue-list");
-    for (const issue of issues) list.append(el("li", "", tm(issue)));
-    dom.report.append(list);
-  }
-
-  // How to fix
-  if (!result.ok) {
-    const codes = new Set((result.issues ?? []).map((issue) => issue.code));
-    for (const report of result.glyphReports ?? []) {
-      for (const master of report.masters) for (const p of master.problems) codes.add(p.code);
-    }
-    const fixes = [...new Set([...codes].map((code) => FIX_FOR_CODE[code]).filter(Boolean))];
-    if (fixes.length) {
-      if (fixes.includes("fix.nodes") || fixes.includes("fix.contours")) fixes.push("fix.order");
-      fixes.push("fix.editor");
-      const box = el("details", "fix-box fold");
-      box.append(el("summary", "", t("report.howToFix")));
-      const list = el("ol", "fix-list");
-      for (const fix of fixes) list.append(el("li", "", t(fix)));
-      box.append(list);
-      dom.report.append(box);
-    }
-  }
-
-  const frame = result.frame;
-  if (result.glyphReports?.length) {
-    dom.report.append(renderGlyphSection(result.glyphReports, frame, "report.glyphsBlocking", true));
-  }
-  if (result.glyphWarnings?.length) {
-    const section = renderGlyphSection(result.glyphWarnings, frame, "report.glyphsWarning", false);
-    dom.report.append(section);
-  }
-
-  const notes = (result.warnings ?? []).filter((w) => w.code !== "outlines_suspicious");
-  if (notes.length) {
-    const box = el("div", "notes");
-    box.append(el("h3", "", t("report.notes")));
-    const list = el("ul", "");
-    for (const note of notes) list.append(el("li", "", tm(note)));
-    box.append(list);
-    dom.report.append(box);
-  }
-
-  if (result.buildError) {
-    const details = el("details", "technical");
-    details.open = !result.issues?.length;
-    details.append(el("summary", "", t("report.technical")), el("pre", "", result.buildError));
-    dom.report.append(details);
-  }
-}
-
-function renderGlyphSection(reports, frame, titleKey, blocking) {
-  const section = el("details", `glyph-section ${blocking ? "blocking" : "warning"}`);
-  section.open = blocking;
-  const summary = el("summary", "");
-  summary.append(el("span", "", t(titleKey, { count: reports.length })));
-  section.append(summary);
-  if (!blocking) section.append(el("p", "section-note", t("report.glyphsWarningText")));
-
-  section.append(legend());
-
-  const visual = reports.filter((report) => report.masters.every((m) => m.visual));
-  const rest = reports.filter((report) => !report.masters.every((m) => m.visual));
-  for (const report of visual) section.append(renderGlyphCard(report, frame));
-  if (rest.length) {
-    section.append(el("p", "more-glyphs", t("report.moreGlyphs", { list: rest.map((r) => r.glyph).join(", ") })));
-  }
-  return section;
-}
-
-function legend() {
-  const box = el("div", "legend");
-  box.innerHTML = `
-    <span><i class="key key-bad"></i>${escapeHtml(t("report.legendBad"))}</span>
-    <span><i class="key key-contour"></i>${escapeHtml(t("report.legendContour"))}</span>
-    <span><i class="key key-start"></i>${escapeHtml(t("report.legendStart"))}</span>`;
-  return box;
-}
-
-function renderGlyphCard(report, frame) {
-  const card = el("article", "glyph-card");
-  const name = report.char && report.char !== report.glyph ? `${report.glyph} · “${report.char}”` : report.glyph;
-  card.append(el("h4", "glyph-card-title", t("report.glyph", { name })));
-  const row = el("div", "glyph-row");
-  const bounds = sharedBounds(report.masters, frame);
-  for (const master of report.masters) {
-    const figure = el("figure", `glyph-figure ${master.master === 0 ? "reference" : ""}`);
-    figure.append(glyphSvg(master.visual, bounds, frame));
-    const caption = el("figcaption", "");
-    const label = slotLabel(master.master) + (master.master === 0 ? ` (${t("report.reference")})` : "");
-    caption.append(el("strong", "", label));
-    const lines = master.master === 0 ? referenceLines(report) : master.problems.map(shortProblem);
-    if (lines.length) {
-      const list = el("ul", "");
-      for (const line of lines) list.append(el("li", "", line));
-      caption.append(list);
-    }
-    figure.append(caption);
-    row.append(figure);
-  }
-  card.append(row);
-  return card;
-}
-
-// Problems that compare counts: the reference value is shown once, under the
-// reference glyph; the other glyphs only show their own value.
-const COUNT_CODES = new Set(["contour_count", "node_count", "point_count"]);
-
-function shortProblem(problem) {
-  if (!COUNT_CODES.has(problem.code)) return tm(problem);
-  return t(`short.${problem.code}`, { ...problem.params, value: problem.params.other });
-}
-
-function referenceLines(report) {
-  const lines = [];
-  for (const master of report.masters) {
-    for (const problem of master.problems) {
-      if (!COUNT_CODES.has(problem.code)) continue;
-      const line = t(`short.${problem.code}`, { ...problem.params, value: problem.params.base });
-      if (!lines.includes(line)) lines.push(line);
-    }
-  }
-  return lines;
-}
-
-function sharedBounds(masters, frame) {
-  let xMin = 0;
-  let xMax = 0;
-  let yMin = frame.descender;
-  let yMax = frame.ascender;
-  for (const master of masters) {
-    xMax = Math.max(xMax, master.visual.advance || 0);
-    for (const contour of master.visual.contours) {
-      for (const [x, y] of contour.points) {
-        xMin = Math.min(xMin, x);
-        xMax = Math.max(xMax, x);
-        yMin = Math.min(yMin, y);
-        yMax = Math.max(yMax, y);
-      }
-    }
-  }
-  const pad = frame.upm * 0.08;
-  return { xMin: xMin - pad, xMax: xMax + pad, yMin: yMin - pad, yMax: yMax + pad };
-}
-
-function svgEl(name, attributes = {}, parent = null) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
-  parent?.append(node);
-  return node;
-}
-
-function glyphSvg(visual, bounds, frame) {
-  const width = bounds.xMax - bounds.xMin;
-  const height = bounds.yMax - bounds.yMin;
-  const unit = frame.upm / 1000;
-  const svg = svgEl("svg", {
-    viewBox: `${bounds.xMin} ${-bounds.yMax} ${width} ${height}`,
-    class: "glyph-svg",
-    role: "img",
-  });
-  // metrics
-  const metrics = svgEl("g", { class: "metrics" }, svg);
-  for (const y of [0, frame.ascender, frame.descender]) {
-    svgEl("line", { x1: bounds.xMin, x2: bounds.xMax, y1: -y, y2: -y }, metrics);
-  }
-  for (const x of [0, visual.advance]) {
-    svgEl("line", { x1: x, x2: x, y1: -bounds.yMax, y2: -bounds.yMin }, metrics);
-  }
-
-  const glyph = svgEl("g", { transform: "scale(1 -1)" }, svg);
-  svgEl("path", { d: visual.path, class: "glyph-fill" }, glyph);
-  visual.contours.forEach((contour) => {
-    svgEl("path", { d: contour.path, class: contour.highlight ? "contour bad" : "contour" }, glyph);
-  });
-
-  const bad = new Set(visual.badPoints.map(([c, p]) => `${c}:${p}`));
-  const overlay = svgEl("g", { class: "points" }, svg);
-  const r = 9 * unit;
-  visual.contours.forEach((contour, ci) => {
-    const pts = contour.points;
-    // handles: off-curve points connect to neighbouring on-curve points
-    pts.forEach(([x, y, on], pi) => {
-      if (on) return;
-      for (const neighbour of [pts[(pi - 1 + pts.length) % pts.length], pts[(pi + 1) % pts.length]]) {
-        if (neighbour[2]) {
-          svgEl("line", { x1: x, y1: -y, x2: neighbour[0], y2: -neighbour[1], class: "handle" }, overlay);
-        }
-      }
-    });
-    pts.forEach(([x, y, on], pi) => {
-      if (on) {
-        svgEl("rect", { x: x - r * 0.8, y: -y - r * 0.8, width: r * 1.6, height: r * 1.6, class: "node" }, overlay);
-      } else {
-        svgEl("circle", { cx: x, cy: -y, r: r * 0.7, class: "offcurve" }, overlay);
-      }
-      if (pi === 0) svgEl("circle", { cx: x, cy: -y, r: r * 2, class: "start" }, overlay);
-    });
-    pts.forEach(([x, y], pi) => {
-      if (!bad.has(`${ci}:${pi}`)) return;
-      svgEl("circle", { cx: x, cy: -y, r: r * 2.6, class: "bad-point" }, overlay);
-    });
-  });
-  return svg;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function el(tag, className = "", text = null) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== null) node.textContent = text;
-  return node;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function clearResults() {
+  clearTimeout(state.rebuildTimer);
   state.result = null;
   state.build = null;
   dom.downloadButton.disabled = true;
   resetPreviewFont();
-  renderSliders();
   renderMatrix();
-  renderReport();
-  renderFontInfo();
-  refreshVertices();
+  applyPreview();
+  renderReport(dom.reportPanel, dom.report, null, slotLabel);
 }
 
-function clearAll() {
-  for (const { face } of Object.values(state.vertexFonts)) document.fonts.delete(face);
-  state.files = {};
-  state.vertexFonts = {};
-  state.fontInfo = {};
+function clearVertices() {
+  state.vertices = {};
+  state.selected = null;
+  state.positions = [0, 0, 0];
+  state.axes = state.axes.map((axis, i) => (axis.edited ? axis : defaultAxis(i)));
   state.exportEdited = { family: false, designer: false };
-  prefillExport();
-  clearResults();
-  updateIdleStatus();
+  placementsChanged();
 }
 
 function renderLanguage() {
@@ -942,30 +699,14 @@ function renderLanguage() {
     node.textContent = t("space.fonts", { count: node.dataset.count });
   });
   renderStatus();
-  refreshVertices();
+  drawLibrary();
+  drawAxisRows();
+  renderSpace(dom.designSpace, spaceContext());
   renderPreviewPlaceholder();
   renderFontInfo();
-  renderReport();
-  if (state.build) {
-    // keep slider values while relabelling
-    const values = { ...state.axisValues };
-    renderSliders();
-    dom.axisSliders.querySelectorAll("input").forEach((slider, index) => {
-      const tag = state.build.axes[index].tag;
-      slider.value = values[tag] ?? 0;
-      slider.nextElementSibling.textContent = slider.value;
-      state.axisValues[tag] = Number(slider.value);
-    });
-    applyPreview();
-    renderMatrix();
-  } else {
-    renderSliders();
-  }
+  renderReport(dom.reportPanel, dom.report, state.result, slotLabel);
+  renderMatrix();
 }
-
-// ---------------------------------------------------------------------------
-// Wiring
-// ---------------------------------------------------------------------------
 
 for (const radio of dom.axisRadios) {
   radio.addEventListener("change", () => radio.checked && setAxisCount(Number(radio.value)));
@@ -976,24 +717,48 @@ for (const button of dom.langButtons) {
     renderLanguage();
   });
 }
-dom.buildButton.addEventListener("click", handleBuild);
+dom.importButton.addEventListener("click", () => dom.importInput.click());
+dom.importInput.addEventListener("change", async () => {
+  const files = [...dom.importInput.files];
+  dom.importInput.value = "";
+  await importFiles(files);
+  updateIdleStatus();
+});
+dom.libraryPanel.addEventListener("dragover", (event) => {
+  if ([...event.dataTransfer.types].includes("Files")) {
+    event.preventDefault();
+    dom.libraryPanel.classList.add("dragover");
+  }
+});
+dom.libraryPanel.addEventListener("dragleave", (event) => {
+  if (!dom.libraryPanel.contains(event.relatedTarget)) dom.libraryPanel.classList.remove("dragover");
+});
+dom.libraryPanel.addEventListener("drop", async (event) => {
+  if (!event.dataTransfer.files?.length) return;
+  event.preventDefault();
+  dom.libraryPanel.classList.remove("dragover");
+  await importFiles([...event.dataTransfer.files]);
+  updateIdleStatus();
+});
+dom.buildButton.addEventListener("click", () => void handleBuild());
 dom.downloadButton.addEventListener("click", handleDownload);
-dom.clearButton.addEventListener("click", clearAll);
+dom.clearButton.addEventListener("click", clearVertices);
 dom.sizeSlider.addEventListener("input", applyPreview);
 dom.familyName.addEventListener("input", () => {
   state.exportEdited.family = dom.familyName.value.trim() !== "";
+  if (state.build) scheduleRebuild();
 });
 dom.designer.addEventListener("input", () => {
   state.exportEdited.designer = dom.designer.value.trim() !== "";
+  if (state.build) scheduleRebuild();
 });
 
 setLanguage(initialLanguage());
 state.axisCount = Number(dom.axisRadios.find((radio) => radio.checked)?.value ?? 1);
-renderDiagram();
 clearResults();
-updateIdleStatus();
 renderLanguage();
+updateIdleStatus();
 applyPreview();
 
 // Exposed for testing in the browser console.
-window.varialo = { state, renderReport, renderFontInfo, refreshVertices };
+window.varialo = { state, importFiles, dropRef, place, fillFromFolder, handleBuild, updateLive };

@@ -31,6 +31,7 @@ from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont, newTable
 from fontTools.varLib import build as varlib_build
+from fontTools.varLib import instancer
 
 MAX_VISUAL_GLYPHS = 12
 MAX_LISTED_GLYPHS = 40
@@ -59,7 +60,9 @@ def _outline_kind(font):
     if "glyf" in font:
         return "TrueType"
     if "CFF2" in font:
-        return "CFF2"
+        # A static CFF2 font (e.g. an instance unpacked from a variable .otf)
+        # has cubic outlines exactly like CFF.
+        return "CFF2" if "fvar" in font else "CFF"
     if "CFF " in font:
         return "CFF"
     return "Unknown"
@@ -529,8 +532,63 @@ def _font_frame(font):
 # ---------------------------------------------------------------------------
 
 
-def _load(paths):
-    return [TTFont(path, recalcBBoxes=False, recalcTimestamp=False) for path in paths]
+def _variable_font_notes(font, label):
+    """Things that get lost when a variable font is unpacked at its corners."""
+    notes = []
+    if "avar" in font:
+        segments = font["avar"].segments
+        if any(any(abs(k - v) > 1e-3 for k, v in mapping.items()) for mapping in segments.values()):
+            notes.append(_msg("vf_avar", font=label))
+    peaks = set()
+    if "gvar" in font:
+        for variations in font["gvar"].variations.values():
+            for variation in variations:
+                for tag, (start, peak, end) in variation.axes.items():
+                    peaks.add(round(peak, 3))
+    if "CFF2" in font:
+        try:
+            store = font["CFF2"].cff.topDictIndex[0].VarStore.otVarStore
+            for region in store.VarRegionList.Region:
+                for axis in region.VarRegionAxis:
+                    if axis.PeakCoord:
+                        peaks.add(round(axis.PeakCoord, 3))
+        except Exception:
+            pass
+    if any(p not in (-1.0, 0.0, 1.0) for p in peaks):
+        notes.append(_msg("vf_intermediate", font=label))
+    return notes
+
+
+def _instantiate(font, location):
+    """Cut a static font out of a variable font at `location` ({tag: value})."""
+    full = {}
+    for axis in font["fvar"].axes:
+        value = location.get(axis.axisTag, axis.defaultValue)
+        full[axis.axisTag] = min(max(float(value), axis.minValue), axis.maxValue)
+    static = instancer.instantiateVariableFont(font, full, inplace=False)
+    buffer = BytesIO()
+    static.save(buffer)
+    buffer.seek(0)
+    return TTFont(buffer, recalcBBoxes=False, recalcTimestamp=False)
+
+
+def _load(sources, labels, notes=None):
+    """Load the source fonts. A source is a path, or {"path", "location"} for
+    an instance to cut out of a variable font."""
+    fonts = []
+    seen = set()
+    for index, source in enumerate(sources):
+        if isinstance(source, str):
+            source = {"path": source}
+        font = TTFont(source["path"], recalcBBoxes=False, recalcTimestamp=False)
+        location = source.get("location")
+        if location is not None and "fvar" in font:
+            if notes is not None and source["path"] not in seen:
+                seen.add(source["path"])
+                notes.extend(_variable_font_notes(font, source.get("fileName") or labels[index]))
+            font = _instantiate(font, location)
+        fonts.append(font)
+    return fonts
 
 
 def _inspect(fonts, paths, labels, file_names=None):
@@ -604,7 +662,7 @@ def _inspect(fonts, paths, labels, file_names=None):
 
 def inspect_fonts(payload_json):
     payload = json.loads(payload_json)
-    fonts = _load(payload["paths"])
+    fonts = _load(payload.get("sources") or payload["paths"], payload["labels"])
     result, _ = _inspect(fonts, payload["paths"], payload["labels"], payload.get("fileNames"))
     return json.dumps(result)
 
@@ -684,7 +742,9 @@ def _cff_to_truetype(fonts, recordings):
         glyf.glyphs = {name: converted[name][m] for name in order}
         font["loca"] = newTable("loca")
         font["glyf"] = glyf
-        del font["CFF "]
+        for table in ("CFF ", "CFF2", "HVAR", "MVAR", "VVAR"):
+            if table in font:
+                del font[table]
         if "VORG" in font:
             del font["VORG"]
         for glyph in glyf.glyphs.values():
@@ -760,16 +820,53 @@ def _rename_family(font, family_name, designer=None):
         name_table.setName(designer, 9, 3, 1, 0x409)
 
 
+def _axis_definitions(axes):
+    """Normalise the axes from the interface.
+
+    Each axis has a tag, a name and the values at the start (vertex A side)
+    and at the end of the axis. The start value is the default of the font.
+    Old requests without start/end use 0 -> 1000.
+    """
+    out = []
+    for axis in axes:
+        start = float(axis.get("start", 0))
+        end = float(axis.get("end", 1000))
+        out.append(
+            {
+                "tag": axis["tag"],
+                "name": axis.get("name") or axis.get("label") or axis["tag"],
+                "start": start,
+                "end": end,
+                "minimum": min(start, end),
+                "maximum": max(start, end),
+            }
+        )
+    return out
+
+
+def _clean_number(value):
+    return int(value) if float(value).is_integer() else round(value, 3)
+
+
 def build_variable_font(request_json, output_path):
     request = json.loads(request_json)
-    paths = request["paths"]
+    sources = request.get("sources") or request["paths"]
     labels = request["labels"]
-    axes = request["axes"]
+    axes = _axis_definitions(request["axes"])
     family_name = (request.get("familyName") or "").strip() or None
     designer = (request.get("designer") or "").strip() or None
+    style_names = [
+        (s.get("styleName") if isinstance(s, dict) else None) for s in sources
+    ]
+    paths = [s["path"] if isinstance(s, dict) else s for s in sources]
+    file_names = request.get("fileNames") or [
+        (s.get("fileName") if isinstance(s, dict) else None) for s in sources
+    ]
 
-    fonts = _load(paths)
-    inspection, recordings = _inspect(fonts, paths, labels, request.get("fileNames"))
+    source_notes = []
+    fonts = _load(sources, labels, source_notes)
+    inspection, recordings = _inspect(fonts, paths, labels, file_names)
+    inspection["warnings"].extend(source_notes)
     if not inspection["ok"]:
         return json.dumps(inspection)
 
@@ -784,20 +881,23 @@ def build_variable_font(request_json, output_path):
             designspace.addAxis(
                 AxisDescriptor(
                     tag=axis["tag"],
-                    name=axis["name"],
-                    labelNames={"en": axis["label"]},
-                    minimum=0,
-                    default=0,
-                    maximum=1000,
+                    name=axis["tag"],
+                    labelNames={"en": axis["name"]},
+                    minimum=axis["minimum"],
+                    default=axis["start"],
+                    maximum=axis["maximum"],
                 )
             )
         used_names = set()
         for index, font in enumerate(fonts):
-            location = _corner_location(index, axes)
+            location = {
+                axis["tag"]: (axis["end"] if (index >> i) & 1 else axis["start"])
+                for i, axis in enumerate(axes)
+            }
             designspace.addSource(SourceDescriptor(name="master.%d" % index, font=font, location=location))
-            style = _name(font, 17, 2) or labels[index]
+            style = style_names[index] or _name(font, 17, 2) or labels[index]
             if style in used_names:
-                style = "%s %s" % (style, chr(65 + index))
+                style = "%s %s" % (style, labels[index])
             used_names.add(style)
             designspace.addInstance(InstanceDescriptor(styleName=style, location=location))
 
@@ -810,11 +910,18 @@ def build_variable_font(request_json, output_path):
         inspection["outputExt"] = ".ttf"
         inspection["familyName"] = family_name or "%s Variable" % base_family
         inspection["axes"] = [
-            {"tag": a["tag"], "label": a["label"], "minimum": 0, "maximum": 1000} for a in axes
+            {
+                "tag": a["tag"],
+                "label": a["name"],
+                "start": _clean_number(a["start"]),
+                "end": _clean_number(a["end"]),
+                "minimum": _clean_number(a["minimum"]),
+                "maximum": _clean_number(a["maximum"]),
+            }
+            for a in axes
         ]
         if converted:
             inspection["warnings"].append(_msg("converted_to_ttf"))
-        inspection["warnings"].append(_msg("axes_info", tags=", ".join(a["tag"] for a in axes)))
         return json.dumps(inspection)
     except Exception as exc:
         inspection["ok"] = False

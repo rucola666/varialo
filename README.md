@@ -13,21 +13,36 @@ Sabotaggio Tipografico workshop by Edoardo Pensieri at IED Torino.
 
 ## What it does
 
-- 1, 2 or 3 axes (X, Y, Z) → 2, 4 or 8 source fonts, placed on a line, square or cube.
-- Accepts `.otf` (CFF) and `.ttf` sources; all sources must use the same format.
-- Always exports a **TrueType variable font (`.ttf`)**. `.otf` sources are
-  converted to quadratic curves for all masters together, so they stay compatible.
-- Font info panel: details of every source font (name, author, version, UPM,
-  glyphs, axes…), with mismatches framed in bold. Family name and author of the
-  exported font are editable and written into the `.ttf`. The variable font gets
-  its own family name, so it doesn't clash with the installed static fonts.
-- Named instances for every vertex, axes `BLNX` / `BLNY` / `BLNZ` from 0 to 1000.
-- Visual compatibility report: when masters don't match, the glyphs are drawn
-  side by side with the extra / unmatched nodes and contours highlighted, plus
-  advice on how to fix them. Line-vs-curve differences in `.otf` sources are
-  fixed automatically. Direction / start-point / contour-order differences are
-  shown as warnings.
-- Live preview with one slider per axis and a clickable interpolation matrix.
+- **Library** (left): import `.ttf` / `.otf` fonts, static or variable.
+  Variable fonts are unpacked into ordered folders with one item per corner
+  (min/max of each axis, up to 3 axes; with more axes you choose which ones and
+  fix the others). Each item has a live preview.
+- **Design space** (right): 1, 2 or 3 axes (line, square, cube). Drag fonts or a
+  whole folder onto the vertices, or click a font and then a vertex.
+- **Axes**: under the diagram each axis gets a tag, a name and the values at the
+  start (vertex A, the default) and at the end. Presets for the registered axes
+  (`wght`, `wdth`, `ital`, `slnt`, `opsz`) or custom axes (UPPERCASE tag,
+  default 1–1000). Axes taken from a variable font are suggested automatically.
+  Invalid tags/ranges are blocked with an explanation.
+- After building, every axis is a slider: on the diagram (handles next to the
+  edges, a point moving inside the line / square / cube, draggable in the square)
+  and in the axis rows. Renaming an axis rebuilds the font automatically.
+- Always exports a **TrueType variable font (`.ttf`)**. `.otf` (CFF / CFF2)
+  sources are converted to quadratic curves for all masters together.
+- Visual compatibility report with the problem nodes highlighted, plus notes
+  when an unpacked variable font had intermediate masters or an `avar` curve.
+- Font info (name and author of the exported font, details of every vertex),
+  live preview and clickable interpolation matrix.
+
+### Axis naming: what was tested
+
+12 fonts with different axes were built with the engine and loaded in Chromium
+(`tests` + the axis test kit): accented / long names, degrees (0 → −45),
+decimals (0.5 → 2.25) and very large ranges (0 → 10000) all load and
+interpolate. Registered axes also respond to plain CSS (`font-weight`,
+`font-stretch`, `font-style: oblique`, optical sizing); custom axes only to
+`font-variation-settings`. Lowercase custom tags are technically accepted by the
+tools but reserved by the OpenType spec, so Varialo blocks them.
 
 ## How it works
 
@@ -61,9 +76,14 @@ GitHub to serve the files as they are.
 | --- | --- |
 | `index.html` | Page structure |
 | `styles.css` | Layout and colours (warm grey, black, warm yellow) |
-| `app.js` | Interface logic, diagram, preview, report drawing |
+| `app.js` | State, build, preview, matrix, font info, wiring |
+| `library.js` | Library: import, unpacking variable fonts into corners |
+| `space.js` | Design space diagram, slider tracks, point, axis rows |
+| `axes.js` | Axis presets and validation rules |
+| `report.js` | Visual compatibility report |
+| `dom.js` | Small DOM helpers |
 | `i18n.js` | Italian and English texts |
-| `fontinfo.js` | Reads name, author, UPM, axes… from the loaded fonts |
+| `fontinfo.js` | Reads names, axes, instances, UPM… from font files |
 | `engine.py` | Font engine run by Pyodide: checks, CFF→TrueType, build |
 | `tests/test_engine.py` | Engine tests (run with plain Python) |
 | `favicon.svg`, `favicon-32.png`, `apple-touch-icon.png` | Icons: the Space Grotesk Bold “V” |

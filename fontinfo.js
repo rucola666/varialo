@@ -65,6 +65,7 @@ function readNames(view, start) {
   }
   const names = {};
   for (const [key, id] of Object.entries(NAME_IDS)) names[key] = best[id]?.value || "";
+  names.byId = Object.fromEntries(Object.entries(best).map(([id, entry]) => [id, entry.value]));
   return names;
 }
 
@@ -88,18 +89,37 @@ export function readFontInfo(buffer) {
     axes: [],
     ...(tables.name !== undefined ? readNames(view, tables.name) : {}),
   };
+  info.instances = [];
   if (tables.fvar !== undefined) {
     const start = tables.fvar;
     const axesOffset = view.getUint16(start + 4);
     const axisCount = view.getUint16(start + 8);
     const axisSize = view.getUint16(start + 10);
+    const instanceCount = view.getUint16(start + 12);
+    const instanceSize = view.getUint16(start + 14);
+    const fixed = (offset) => Math.round((view.getInt32(offset) / 65536) * 1000) / 1000;
     for (let i = 0; i < axisCount; i++) {
       const axis = start + axesOffset + i * axisSize;
+      const axisTag = tag(view, axis);
+      const nameId = view.getUint16(axis + 18);
       info.axes.push({
-        tag: tag(view, axis),
-        min: view.getInt32(axis + 4) / 65536,
-        max: view.getInt32(axis + 12) / 65536,
+        tag: axisTag,
+        min: fixed(axis + 4),
+        default: fixed(axis + 8),
+        max: fixed(axis + 12),
+        name: info.byId?.[nameId] || axisTag,
+        hidden: Boolean(view.getUint16(axis + 16) & 1),
       });
+    }
+    const instancesStart = start + axesOffset + axisCount * axisSize;
+    for (let i = 0; i < instanceCount; i++) {
+      const record = instancesStart + i * instanceSize;
+      const nameId = view.getUint16(record);
+      const coordinates = {};
+      info.axes.forEach((axis, a) => {
+        coordinates[axis.tag] = fixed(record + 4 + a * 4);
+      });
+      info.instances.push({ name: info.byId?.[nameId] || "", coordinates });
     }
   }
   if (tables.CFF2 !== undefined) info.outline = "CFF2";

@@ -238,6 +238,98 @@ def main():
     assert names.getDebugName(6) == "CorsoSans"
     checks += 1
 
+    # 11. Custom axes: tag, name, start/end values (start = default, may be > end)
+    out = tmp / "custom.ttf"
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "paths": otf[:4], "labels": list("ABCD"),
+        "axes": [{"tag": "ROND", "name": "Rotondità", "start": 1, "end": 1000},
+                 {"tag": "slnt", "name": "Slant", "start": 0, "end": -12}],
+    }), str(out)))
+    assert result["ok"], (result["issues"], result.get("buildError"))
+    vf = TTFont(str(out))
+    rond, slnt = vf["fvar"].axes
+    assert (rond.axisTag, rond.minValue, rond.defaultValue, rond.maxValue) == ("ROND", 1, 1, 1000)
+    assert (slnt.axisTag, slnt.minValue, slnt.defaultValue, slnt.maxValue) == ("slnt", -12, 0, 0)
+    assert vf["name"].getDebugName(rond.axisNameID) == "Rotondità"
+    assert result["axes"][1] == {"tag": "slnt", "label": "Slant", "start": 0, "end": -12, "minimum": -12, "maximum": 0}
+    checks += 1
+
+    # helpers: a 1-axis and a 2-axis variable font made by Varialo itself
+    def make_vf(name, fonts, axes, family):
+        path = tmp / name
+        res = json.loads(engine.build_variable_font(json.dumps({
+            "paths": fonts, "labels": [chr(65 + i) for i in range(len(fonts))],
+            "axes": axes, "familyName": family}), str(path)))
+        assert res["ok"], res
+        return str(path)
+
+    upright = make_vf("upright-vf.ttf", tt[:2], [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}], "Up")
+    italic = make_vf("italic-vf.ttf", tt[2:4], [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}], "It")
+
+    # 12. Unpack a variable font at its corners and rebuild it
+    out = tmp / "unpacked.ttf"
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "sources": [{"path": upright, "location": {"wght": 100}, "fileName": "upright-vf.ttf"},
+                    {"path": upright, "location": {"wght": 900}, "fileName": "upright-vf.ttf"}],
+        "labels": ["A", "B"], "axes": [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}],
+    }), str(out)))
+    assert result["ok"], (result["issues"], result.get("buildError"))
+    rebuilt = instantiateVariableFont(TTFont(str(out)), {"wght": 500})
+    original = instantiateVariableFont(TTFont(upright), {"wght": 500})
+    assert rebuilt["glyf"]["A"].getCoordinates(rebuilt["glyf"])[0] == original["glyf"]["A"].getCoordinates(original["glyf"])[0]
+    assert not [w for w in result["warnings"] if w["code"].startswith("vf_")]
+    checks += 1
+
+    # 13. Two 1-axis variable fonts on the two edges of a square
+    out = tmp / "square-from-vfs.ttf"
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "sources": [{"path": upright, "location": {"wght": 100}}, {"path": upright, "location": {"wght": 900}},
+                    {"path": italic, "location": {"wght": 100}}, {"path": italic, "location": {"wght": 900}}],
+        "labels": list("ABCD"),
+        "axes": [{"tag": "wght", "name": "Weight", "start": 100, "end": 900},
+                 {"tag": "ital", "name": "Italic", "start": 0, "end": 1}],
+    }), str(out)))
+    assert result["ok"], (result["issues"], result.get("buildError"))
+    assert [a.axisTag for a in TTFont(str(out))["fvar"].axes] == ["wght", "ital"]
+    checks += 1
+
+    # 14. CFF2 variable font (.otf) is unpacked and converted
+    from fontTools.designspaceLib import DesignSpaceDocument, AxisDescriptor, SourceDescriptor
+    from fontTools.varLib import build as vbuild
+    ds = DesignSpaceDocument()
+    ds.addAxis(AxisDescriptor(tag="wght", name="wght", minimum=100, default=100, maximum=900))
+    ds.addSource(SourceDescriptor(font=TTFont(otf[0]), location={"wght": 100}))
+    ds.addSource(SourceDescriptor(font=TTFont(otf[1]), location={"wght": 900}))
+    cff2 = vbuild(ds)[0]
+    assert "CFF2" in cff2
+    cff2_path = tmp / "cff2-vf.otf"
+    cff2.save(str(cff2_path))
+    out = tmp / "from-cff2.ttf"
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "sources": [{"path": str(cff2_path), "location": {"wght": 100}}, {"path": str(cff2_path), "location": {"wght": 900}}],
+        "labels": ["A", "B"], "axes": [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}],
+    }), str(out)))
+    assert result["ok"], (result["issues"], result.get("buildError"))
+    assert "glyf" in TTFont(str(out))
+    checks += 1
+
+    # 15. A variable font with an intermediate master gets a note
+    ds = DesignSpaceDocument()
+    ds.addAxis(AxisDescriptor(tag="wght", name="wght", minimum=100, default=100, maximum=900))
+    for path, value in ((tt[0], 100), (tt[5], 500), (tt[1], 900)):
+        ds.addSource(SourceDescriptor(font=TTFont(path), location={"wght": value}))
+    three = tmp / "three-masters.ttf"
+    vbuild(ds)[0].save(str(three))
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "sources": [{"path": str(three), "location": {"wght": 100}, "fileName": "three-masters.ttf"},
+                    {"path": str(three), "location": {"wght": 900}, "fileName": "three-masters.ttf"}],
+        "labels": ["A", "B"], "axes": [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}],
+    }), str(tmp / "x.ttf")))
+    assert result["ok"]
+    notes = [w for w in result["warnings"] if w["code"] == "vf_intermediate"]
+    assert len(notes) == 1 and notes[0]["params"]["font"] == "three-masters.ttf", result["warnings"]
+    checks += 1
+
     print(f"All {checks} engine checks passed.")
 
 

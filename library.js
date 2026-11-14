@@ -3,7 +3,7 @@
 // the min/max values of up to three of their axes).
 
 import { el, formatNumber, variationCss } from "./dom.js";
-import { pickLetter, readFontInfo } from "./fontinfo.js";
+import { pickLetters, readFontInfo } from "./fontinfo.js";
 import { t } from "./i18n.js";
 
 export const MAX_UNPACKED_AXES = 3;
@@ -203,7 +203,8 @@ export function renderLibrary(
   }
   let looseGrid = null;
   for (const item of library) {
-    const letter = pickLetter([item.info]);
+    const letters = pickLetters([item.info]);
+    const letter = letters.matrix;
     if (item.kind === "static") {
       if (!looseGrid) {
         looseGrid = el("div", "tile-grid");
@@ -236,6 +237,7 @@ export function renderLibrary(
     folder.classList.toggle("is-open", item.open);
     const head = el("div", "lib-folder-head");
     head.draggable = true;
+    head.classList.toggle("is-selected", Boolean(selected?.folder && selected.item === item.id));
     head.title = t("library.folderDragHint");
     head.addEventListener("dragstart", (event) => dragData(event, { item: item.id, folder: true }));
     const toggle = el("button", "lib-toggle", item.open ? "−" : "+");
@@ -243,7 +245,7 @@ export function renderLibrary(
     toggle.setAttribute("aria-expanded", String(item.open));
     toggle.title = t(item.open ? "library.collapse" : "library.expand");
     toggle.addEventListener("click", () => onToggle(item.id));
-    const glyph = el("span", "folder-glyph", letter);
+    const glyph = el("span", "folder-glyph", letters.variable);
     if (item.family) glyph.style.fontFamily = `"${item.family}", var(--font-display)`;
     const text = el("span", "lib-text");
     const axesText = item.info.axes.map((axis) => `${axis.tag} ${formatNumber(axis.min)}–${formatNumber(axis.max)}`).join(" · ");
@@ -255,6 +257,10 @@ export function renderLibrary(
       actionButton("×", "library.remove", () => onRemove(item.id)),
     );
     head.append(toggle, glyph, text, tools);
+    head.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      onSelect({ item: item.id, child: null, folder: true });
+    });
     folder.append(head);
 
     if (item.open) {

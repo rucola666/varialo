@@ -4,7 +4,7 @@ import { el, formatNumber, variationCss } from "./dom.js";
 import { corners, importFile, itemName, renderLibrary, resolve } from "./library.js";
 import { renderReport } from "./report.js";
 import { renderSpace, updateSpace } from "./space.js";
-import { pickLetter } from "./fontinfo.js";
+import { pickLetters } from "./fontinfo.js";
 
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const KEYS = "abcdefgh";
@@ -26,7 +26,7 @@ const state = {
   previewFace: null,
   previewUrl: null,
   fsPaths: {}, // library item id -> path in the Pyodide file system
-  letter: "V", // the letter shown everywhere (V, or the first glyph from "a")
+  letters: { matrix: "M", variable: "V" }, // M for masters, V for the variable font
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,7 +35,8 @@ const dom = {
   libraryPanel: $("#library-panel"),
   importInput: $("#import-input"),
   importButton: $("#import-button"),
-  selection: $("#library-selection"),
+  libPreview: $("#lib-preview"),
+  libPreviewLabel: $("#lib-preview-label"),
   designSpace: $("#design-space"),
   axisErrors: $("#axis-errors"),
   wordmark: $(".wordmark"),
@@ -87,7 +88,7 @@ function updateLetter() {
     .map((key) => resolve(state.library, state.vertices[key])?.info)
     .filter(Boolean);
   const infos = placed.length ? placed : state.library.map((item) => item.info);
-  state.letter = pickLetter(infos);
+  state.letters = pickLetters(infos);
 }
 
 // The VARIALO wordmark is set in the fonts being worked on: the variable font
@@ -162,10 +163,9 @@ function drawLibrary() {
     selected: state.selected,
     placementsOf,
     onSelect: (ref) => {
-      const same = state.selected && state.selected.item === ref.item && state.selected.child === ref.child;
-      state.selected = same ? null : ref;
+      state.selected = ref; // clicking only shows the font in the preview
       drawLibrary();
-      drawSpace();
+      renderMiniPreview();
     },
     onRemove: (id) => {
       const item = state.library.find((entry) => entry.id === id);
@@ -191,9 +191,7 @@ function drawLibrary() {
       placementsChanged();
     },
   });
-  const selected = resolve(state.library, state.selected);
-  dom.selection.textContent = selected ? t("library.selected", { name: selected.label }) : t("library.hint");
-  dom.selection.classList.toggle("is-active", Boolean(selected));
+  renderMiniPreview();
 }
 
 function place(key, ref) {
@@ -236,17 +234,72 @@ async function dropFiles(key, files) {
 function dropRef(key, data) {
   const item = state.library.find((entry) => entry.id === data.item);
   if (!item) return;
-  if (data.folder) fillFromFolder(item);
-  else if (key) place(key, data);
+  if (data.folder) {
+    fillFromFolder(item);
+    return;
+  }
+  if (!key) return;
+  if (data.fromVertex) {
+    // Moving a font from one vertex to another (swap if the target is taken).
+    if (data.fromVertex === key) return;
+    const target = state.vertices[key];
+    state.vertices[key] = { item: data.item, child: data.child ?? null };
+    if (target) state.vertices[data.fromVertex] = target;
+    else delete state.vertices[data.fromVertex];
+    placementsChanged();
+    return;
+  }
+  place(key, data);
 }
 
+// Clicking a vertex shows its font in the small preview under the library.
 function clickVertex(key) {
-  if (!state.selected) return false;
-  place(key, state.selected);
-  state.selected = null;
-  drawLibrary();
-  drawSpace();
-  return true;
+  const ref = state.vertices[key];
+  if (ref) {
+    state.selected = ref;
+    drawLibrary();
+  }
+}
+
+// Small preview under the library: the clicked font (a matrix, or a variable
+// font folder), or the generated variable font once it exists.
+function renderMiniPreview() {
+  const stage = dom.libPreview;
+  let family = null;
+  let variation = "";
+  let label = "";
+  if (isLive()) {
+    family = state.previewFace.family;
+    const location = locationAt();
+    variation = variationCss(location);
+    label = `${t("library.previewGenerated")} · ${Object.entries(location)
+      .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
+      .join(" · ")}`;
+  } else {
+    let ref = state.selected;
+    if (ref && !state.library.some((item) => item.id === ref.item)) ref = null;
+    if (!ref && state.library.length) {
+      const first = state.library[0];
+      ref = first.kind === "variable" ? { item: first.id, child: null, folder: true } : { item: first.id, child: null };
+    }
+    const item = ref && state.library.find((entry) => entry.id === ref.item);
+    if (item && item.kind === "variable" && (ref.folder || ref.child === null)) {
+      family = item.family;
+      variation = variationCss(item.pinned);
+      label = `${itemName(item)} · ${t("library.variable")}`;
+    } else if (ref) {
+      const source = resolve(state.library, ref);
+      if (source) {
+        family = source.family;
+        variation = variationCss(source.location);
+        label = source.label;
+      }
+    }
+  }
+  stage.style.fontFamily = family ? `"${family}", var(--font-display)` : "";
+  stage.style.fontVariationSettings = variation;
+  stage.classList.toggle("is-empty", !family);
+  dom.libPreviewLabel.textContent = label || t("library.previewEmpty");
 }
 
 function placementsChanged() {
@@ -303,7 +356,9 @@ function spaceContext() {
     axes: state.axes,
     sources: sources(),
     selected: state.selected,
-    letter: state.letter,
+    letter: state.letters.matrix,
+    variableLetter: state.letters.variable,
+    refAt: (key) => state.vertices[key] ?? null,
     pointFont: isLive() ? { family: state.previewFace.family, variation: variationCss(locationAt()) } : null,
     errorList: dom.axisErrors,
     failing: failingKeys(),
@@ -354,6 +409,7 @@ function updateLive() {
   applyPreview();
   renderMatrix();
   renderHeader();
+  renderMiniPreview();
 }
 
 function setAxisCount(count, { keepVertices = false } = {}) {
@@ -687,7 +743,7 @@ function renderMatrix() {
       const positions = [...state.positions];
       positions[0] = column;
       if (twoD) positions[1] = row;
-      const cell = el("button", "instance-cell", state.letter);
+      const cell = el("button", "instance-cell", state.letters.variable);
       cell.type = "button";
       cell.classList.toggle("is-current", near(state.positions[0], column) && (!twoD || near(state.positions[1], row)));
       cell.addEventListener("click", () => {
@@ -801,6 +857,7 @@ function clearResults() {
   applyPreview();
   renderReport(dom.reportPanel, dom.report, null, slotLabel);
   renderHeader();
+  renderMiniPreview();
 }
 
 function clearVertices() {

@@ -147,6 +147,21 @@ function pointAt(geo, positions) {
   return p;
 }
 
+// Dashed projections of the point onto the figure: Y from edge A–C, X from
+// edge C–D, Z from edge D–H. The line (1 axis) needs none.
+function projectionStarts(geo, positions) {
+  if (geo.count === 1) return [];
+  const [x, y, z] = positions;
+  const A = geo.origin;
+  const C = add(A, geo.basis[1], geo.L);
+  const starts = [add(C, geo.basis[0], x * geo.L), add(A, geo.basis[1], y * geo.L)];
+  if (geo.count === 3) {
+    const D = add(C, geo.basis[0], geo.L);
+    starts.push(add(D, geo.basis[2], z * geo.L));
+  }
+  return starts;
+}
+
 function handleAt(ruler, value) {
   return [ruler.from[0] + (ruler.to[0] - ruler.from[0]) * value, ruler.from[1] + (ruler.to[1] - ruler.from[1]) * value];
 }
@@ -184,7 +199,7 @@ export function renderSpace(container, ctx) {
       ? svgEl("rect", { class: "plane", x: geo.origin[0], y: geo.origin[1], width: geo.L, height: geo.L }, svg)
       : null;
   const guides = svgEl("g", { class: "guides" }, svg);
-  geo.rulers.forEach((_, i) => svgEl("line", { class: "guide", "data-axis": i }, guides));
+  if (geo.count > 1) geo.rulers.forEach((_, i) => svgEl("line", { class: "guide", "data-axis": i }, guides));
 
   geo.rulers.forEach((ruler, i) => {
     const group = svgEl("g", { class: "ruler", "data-axis": i }, svg);
@@ -209,24 +224,25 @@ export function renderSpace(container, ctx) {
     const vertex = el("div", `vertex label-${side}${depth ? ` is-${depth}` : ""}`);
     placeAt(vertex, container, [x, y]);
     vertex.dataset.key = key;
-    const input = el("input", "vertex-input");
-    input.type = "file";
-    input.accept = ".ttf,.otf,font/ttf,font/otf";
-    input.tabIndex = -1;
-    input.addEventListener("change", (event) => {
-      const files = [...(event.target.files ?? [])];
-      event.target.value = "";
-      if (files.length) ctx.onDropFiles(key, files);
-    });
-    const node = el("button", "vertex-node");
-    node.type = "button";
+    const node = el("div", "vertex-node");
     node.dataset.key = key;
-    node.addEventListener("click", () => {
-      if (!ctx.onClickVertex(key)) input.click();
+    node.tabIndex = 0;
+    node.addEventListener("click", () => ctx.onClickVertex(key));
+    // A filled vertex can be dragged onto another vertex to move its font.
+    node.addEventListener("dragstart", (event) => {
+      const ref = ctx.refAt(key);
+      if (!ref) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ...ref, fromVertex: key }));
+      event.dataTransfer.effectAllowed = "move";
+      node.classList.add("is-dragging");
     });
+    node.addEventListener("dragend", () => node.classList.remove("is-dragging"));
     node.addEventListener("dragover", (event) => {
       event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
+      event.dataTransfer.dropEffect = [...event.dataTransfer.types].includes(DRAG_TYPE) ? "move" : "copy";
       node.classList.add("dragover");
     });
     node.addEventListener("dragleave", () => node.classList.remove("dragover"));
@@ -240,7 +256,7 @@ export function renderSpace(container, ctx) {
     });
     const caption = el("span", "vertex-caption");
     caption.append(el("strong", "", key.toUpperCase()), el("span", "vertex-file"));
-    vertex.append(input, node, caption);
+    vertex.append(node, caption);
     container.append(vertex);
   }
 
@@ -495,10 +511,13 @@ export function updateSpace(container, ctx) {
     handle.setAttribute("aria-label", `${AXIS_LETTERS[i]} · ${axis.name}`);
     handle.setAttribute("aria-valuetext", `${axis.tag} ${formatNumber(valueAt(axis, positions[i] ?? 0))}`);
     const guide = svg.querySelector(`.guide[data-axis="${i}"]`);
-    guide.setAttribute("x1", hx);
-    guide.setAttribute("y1", hy);
-    guide.setAttribute("x2", px);
-    guide.setAttribute("y2", py);
+    const from = projectionStarts(geo, positions)[i];
+    if (guide && from) {
+      guide.setAttribute("x1", from[0]);
+      guide.setAttribute("y1", from[1]);
+      guide.setAttribute("x2", px);
+      guide.setAttribute("y2", py);
+    }
 
     for (const end of ["start", "end"]) {
       const input = container.querySelector(`.ruler-input[data-axis="${i}"][data-end="${end}"]`);
@@ -516,11 +535,13 @@ export function updateSpace(container, ctx) {
 
   const point = container.querySelector(".space-point");
   placeAt(point, container, [px, py]);
-  point.textContent = ctx.letter;
   if (live && ctx.pointFont) {
     point.style.fontFamily = `"${ctx.pointFont.family}", var(--font-display)`;
     point.style.fontVariationSettings = ctx.pointFont.variation;
   }
+  // A fresh text node makes every browser redraw the glyph with the new
+  // variation (some engines skip the repaint when only the variation changes).
+  point.replaceChildren(document.createTextNode(ctx.variableLetter));
 
   for (const vertex of container.querySelectorAll(".vertex")) {
     const key = vertex.dataset.key;
@@ -528,7 +549,7 @@ export function updateSpace(container, ctx) {
     const source = ctx.sources[key];
     node.innerHTML = "";
     node.classList.toggle("filled", Boolean(source));
-    node.classList.toggle("can-place", Boolean(ctx.selected));
+    node.draggable = Boolean(source);
     vertex.classList.toggle("is-base", key === "a");
     vertex.classList.toggle("has-error", ctx.failing.has(key));
     const index = key.charCodeAt(0) - 97;
@@ -537,6 +558,7 @@ export function updateSpace(container, ctx) {
       .join(" · ");
     if (source) {
       const glyph = el("span", "vertex-glyph", ctx.letter);
+      glyph.draggable = false;
       if (source.family) glyph.style.fontFamily = `"${source.family}", var(--font-display)`;
       if (source.location) glyph.style.fontVariationSettings = variationCss(source.location);
       node.append(glyph);

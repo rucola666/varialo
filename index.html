@@ -26,21 +26,21 @@
           <p class="tagline" data-i18n="hero.tagline"></p>
         </div>
         <div class="masthead-tools">
+          <details class="about">
+            <summary data-i18n="hero.about"></summary>
+            <div class="about-body">
+              <p data-i18n="hero.aboutText1"></p>
+              <p data-i18n="hero.aboutText2"></p>
+              <p data-i18n="hero.aboutText3"></p>
+              <p class="credits" data-i18n="hero.credits"></p>
+            </div>
+          </details>
           <div class="lang-switch" role="group" data-i18n-aria="lang.label" aria-label="Lingua">
             <button type="button" class="lang-button" data-lang="it">IT</button>
             <button type="button" class="lang-button" data-lang="en">EN</button>
           </div>
         </div>
       </div>
-      <details class="about">
-        <summary data-i18n="hero.about"></summary>
-        <div class="about-body">
-          <p data-i18n="hero.aboutText1"></p>
-          <p data-i18n="hero.aboutText2"></p>
-          <p data-i18n="hero.aboutText3"></p>
-          <p class="credits" data-i18n="hero.credits"></p>
-        </div>
-      </details>
       <ol class="steps">
         <li><span class="step-num">1</span><span data-i18n="steps.1"></span></li>
         <li><span class="step-num">2</span><span data-i18n="steps.2"></span></li>
@@ -57,7 +57,11 @@
             <input id="import-input" type="file" accept=".ttf,.otf,font/ttf,font/otf" multiple hidden />
           </div>
           <div id="library" class="library"></div>
-          <p id="library-selection" class="library-selection" aria-live="polite"></p>
+          <p class="library-hint" data-i18n="library.hint"></p>
+          <div class="lib-preview">
+            <p id="lib-preview-label" class="lib-preview-label"></p>
+            <div id="lib-preview" class="lib-preview-stage" contenteditable="true" spellcheck="false">Varialo</div>
+          </div>
         </section>
 
         <section class="panel space-panel" aria-labelledby="space-title">

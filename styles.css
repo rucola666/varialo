@@ -1558,7 +1558,7 @@ input[type="range"]::-moz-range-thumb {
 
 .library {
   flex: 1;
-  max-height: 78vh;
+  max-height: 58vh;
   overflow-y: auto;
   padding: 12px;
 }
@@ -2298,4 +2298,160 @@ input[type="range"]::-moz-range-thumb {
 
 .axis-errors:empty {
   display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Round 5                                                             */
+/* ------------------------------------------------------------------ */
+
+/* About next to the language switch */
+.masthead-tools {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.masthead-tools .about {
+  position: relative;
+  border-bottom: 0;
+}
+
+.masthead-tools .about summary {
+  padding: 6px 0;
+}
+
+.masthead-tools .about-body {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: min(760px, calc(100vw - 2 * var(--gutter)));
+  padding: 18px 20px;
+  border: var(--line);
+  background: var(--paper-light);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+/* Figure lines: light grey, under the letters */
+.design-space .edge,
+.design-space .edge-back,
+.design-space .edge-axis {
+  stroke: #c9c3b8;
+  stroke-width: 1.5;
+}
+
+/* Vertices: black frame, same colour as the background (hides the lines) */
+.vertex-node,
+.vertex-node.filled {
+  display: grid;
+  place-items: center;
+  width: var(--node);
+  height: var(--node);
+  border: 2px solid var(--ink);
+  background: var(--paper-light);
+  overflow: hidden;
+  cursor: default;
+}
+
+.vertex-node.filled {
+  cursor: grab;
+}
+
+.vertex-node.is-dragging {
+  opacity: 0.4;
+}
+
+.vertex-glyph {
+  font-size: calc(var(--node) * 0.72);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.vertex-plus {
+  width: auto;
+  aspect-ratio: auto;
+  border: 0;
+  background: transparent;
+  font-size: calc(var(--node) * 0.4);
+}
+
+.vertex-node:hover .vertex-plus {
+  background: transparent;
+  color: var(--ink);
+}
+
+.vertex-node:hover,
+.vertex-node.dragover {
+  background: var(--yellow-soft);
+  outline: 0;
+}
+
+.vertex-node.dragover {
+  background: var(--yellow);
+}
+
+.vertex-node:focus {
+  outline: none;
+}
+
+.vertex-node:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.vertex.has-error .vertex-node {
+  outline: 3px dashed var(--ink);
+  outline-offset: 3px;
+}
+
+/* No browser focus ring on the slider handles */
+.handle:focus,
+.ruler:focus,
+.design-space svg:focus {
+  outline: none;
+}
+
+/* Small preview under the library */
+.library-hint {
+  padding: 8px 14px;
+  border-top: var(--line);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.lib-preview {
+  border-top: var(--line);
+  background: #fff;
+}
+
+.lib-preview-label {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--paper-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.lib-preview-stage {
+  min-height: 72px;
+  padding: 10px 14px 12px;
+  font-size: 44px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.lib-preview-stage:focus {
+  box-shadow: inset 0 0 0 3px var(--yellow);
+}
+
+.lib-preview-stage.is-empty {
+  color: var(--paper-dark);
+}
+
+.lib-folder-head.is-selected {
+  background: var(--yellow);
 }

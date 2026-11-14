@@ -2678,3 +2678,32 @@ svg .space-point {
 .design-space[data-axes="3"] {
   --node: 10cqw;
 }
+
+/* Round 7: build button alone, download in Font info, preview full width */
+.actions {
+  grid-template-columns: 1fr;
+}
+
+.download-button {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  border: var(--line);
+}
+
+.download-button:disabled {
+  border-color: var(--paper-dark);
+}
+
+.preview-panel {
+  scroll-margin-top: var(--gutter);
+}
+
+.preview-panel .preview-stage {
+  min-height: 220px;
+  padding: 22px 26px;
+}
+
+.preview-panel .instance-grid {
+  max-width: 720px;
+}

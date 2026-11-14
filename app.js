@@ -15,7 +15,7 @@ const state = {
   selected: null, // {item, child} chosen in the library, waiting for a vertex
   axisCount: 1,
   vertices: {}, // vertex key -> {item, child}
-  axes: [0, 1, 2].map(defaultAxis),
+  axes: [0, 1, 2].map((index) => defaultAxis(index, 1)),
   positions: [0, 0, 0], // where the preview is on each axis, 0 = start, 1 = end
   exportEdited: { family: false, designer: false },
   status: { kind: "idle", key: "status.start", params: {} },
@@ -38,6 +38,7 @@ const dom = {
   importInput: $("#import-input"),
   importButton: $("#import-button"),
   modeButtons: Array.from(document.querySelectorAll(".mode-button")),
+  previewPanel: $("#preview-panel"),
   designSpace: $("#design-space"),
   axisErrors: $("#axis-errors"),
   wordmark: $(".wordmark"),
@@ -299,7 +300,7 @@ function renderMiniPreview() {
   applyPreview();
 }
 
-const PREVIEW_SIZES = { letter: 200, word: 72, pangram: 30 };
+const PREVIEW_SIZES = { letter: 280, word: 140, pangram: 56 };
 
 function previewText(mode) {
   if (mode === "letter") return isLive() ? state.letters.variable : state.letters.matrix;
@@ -361,7 +362,7 @@ function suggestAxes() {
         };
       }
     }
-    state.axes[i] = suggestion ?? defaultAxis(i);
+    state.axes[i] = suggestion ?? defaultAxis(i, state.axisCount);
   }
 }
 
@@ -396,7 +397,7 @@ function spaceContext() {
       updateLive();
     },
     onPreset: (index, key) => {
-      state.axes[index] = applyPreset(state.axes[index], key, index);
+      state.axes[index] = applyPreset(state.axes[index], key, index, state.axisCount);
       axesChanged();
     },
     onAxisInput: (index, patch) => {
@@ -576,6 +577,8 @@ async function handleBuild({ silent = false } = {}) {
     // (after renaming an axis) keeps the current position.
     if (!silent) state.positions = [0.5, 0.5, 0.5];
     updateLive();
+    // Show the result right away: the page scrolls to the preview.
+    if (!silent) dom.previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     drawSpace();
     setStatus("success", "status.ready");
   } catch (error) {
@@ -885,7 +888,7 @@ function clearVertices() {
   state.vertices = {};
   state.selected = null;
   state.positions = [0, 0, 0];
-  state.axes = state.axes.map((axis, i) => (axis.edited ? axis : defaultAxis(i)));
+  state.axes = state.axes.map((axis, i) => (axis.edited ? axis : defaultAxis(i, state.axisCount)));
   state.exportEdited = { family: false, designer: false };
   placementsChanged();
 }

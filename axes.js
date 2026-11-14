@@ -25,12 +25,15 @@ export const PRESETS = {
 export const REGISTERED = ["wght", "wdth", "ital", "slnt", "opsz"];
 const FIXED_LIMIT = 32767;
 
-export function defaultAxis(index) {
+// With one axis the default is BLND "Blend"; with two or three axes they are
+// BLNX / BLNY / BLNZ, like the axes of the drawing.
+export function defaultAxis(index, axisCount = 3) {
   const letter = AXIS_LETTERS[index];
+  const single = axisCount === 1;
   return {
     preset: "custom",
-    tag: `BLN${letter}`,
-    name: `Blend ${letter}`,
+    tag: single ? "BLND" : `BLN${letter}`,
+    name: single ? "Blend" : `Blend ${letter}`,
     start: PRESETS.custom.start,
     end: PRESETS.custom.end,
     edited: false, // the student typed something: no automatic suggestions
@@ -38,10 +41,10 @@ export function defaultAxis(index) {
   };
 }
 
-export function applyPreset(axis, presetKey, index) {
+export function applyPreset(axis, presetKey, index, axisCount = 3) {
   const preset = PRESETS[presetKey];
   if (presetKey === "custom") {
-    const fresh = defaultAxis(index);
+    const fresh = defaultAxis(index, axisCount);
     return { ...fresh, preset: "custom", edited: true };
   }
   return {

@@ -84,6 +84,7 @@ const STRINGS = {
     "preview.modePangram": "Pangramma",
     "preview.word": "Tipografia",
     "preview.pangram": "Quel vituperabile xenofobo zelante assaggia il whisky ed esclama: alleluja!",
+    "status.restored": "Questa configurazione era già stata generata: il font variabile è di nuovo pronto da scaricare.",
     "lang.label": "Lingua",
 
     "steps.1": "Importa i font nella libreria",
@@ -311,6 +312,7 @@ const STRINGS = {
     "preview.modePangram": "Pangram",
     "preview.word": "Typography",
     "preview.pangram": "The quick brown fox jumps over the lazy dog.",
+    "status.restored": "This configuration was already built: the variable font is ready to download again.",
     "lang.label": "Language",
 
     "steps.1": "Import fonts into the library",

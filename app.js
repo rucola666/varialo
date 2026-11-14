@@ -26,6 +26,8 @@ const state = {
   previewFace: null,
   previewUrl: null,
   fsPaths: {}, // library item id -> path in the Pyodide file system
+  builds: new Map(), // configuration signature -> {result, build, positions}
+  buildSignature: null, // signature of the font currently shown
   letters: { matrix: "M", variable: "V" }, // M for masters, V for the variable font
   previewMode: "word", // letter | word | pangram
   previewEdited: false, // the student typed their own text
@@ -180,6 +182,9 @@ function drawLibrary() {
       delete state.fsPaths[id];
       for (const key of KEYS) if (state.vertices[key]?.item === id) delete state.vertices[key];
       if (state.selected?.item === id) state.selected = null;
+      for (const signature of [...state.builds.keys()]) {
+        if (signature.includes(`"${id}"`)) state.builds.delete(signature);
+      }
       placementsChanged();
     },
     onToggle: (id) => {
@@ -322,7 +327,52 @@ function refreshPreviewText() {
   if (!state.previewEdited) dom.previewStage.textContent = previewText(state.previewMode);
 }
 
+// Everything that defines a variable font: axis count, fonts on the vertices
+// (and the exact corner of a variable font), axes, name and author.
+function configSignature() {
+  return JSON.stringify({
+    axisCount: state.axisCount,
+    vertices: activeKeys().map((key) => {
+      const ref = state.vertices[key];
+      if (!ref) return null;
+      return [ref.item, ref.child ?? null, resolve(state.library, ref)?.location ?? null];
+    }),
+    axes: activeAxes().map((axis) => [axis.tag, axis.name.trim(), Number(axis.start), Number(axis.end)]),
+    family: dom.familyName.value.trim(),
+    designer: dom.designer.value.trim(),
+  });
+}
+
+function rememberPositions() {
+  if (state.build && state.buildSignature && state.builds.has(state.buildSignature)) {
+    state.builds.get(state.buildSignature).positions = [...state.positions];
+  }
+}
+
+// Coming back to a configuration that was already built: show that font
+// again (ready to download), where the sliders were left.
+async function restoreBuild() {
+  const signature = configSignature();
+  const saved = state.builds.get(signature);
+  if (!saved || state.building) return false;
+  state.result = saved.result;
+  state.build = saved.build;
+  state.buildSignature = signature;
+  renderReport(dom.reportPanel, dom.report, saved.result, slotLabel);
+  placeReport(true);
+  await loadPreviewFont(saved.build.bytes);
+  if (configSignature() !== signature) return false; // changed while loading
+  state.positions = [...saved.positions];
+  dom.downloadButton.disabled = false;
+  updateLive();
+  drawSpace();
+  renderFontInfo();
+  setStatus("success", "status.restored");
+  return true;
+}
+
 function placementsChanged() {
+  rememberPositions();
   clearResults();
   suggestAxes();
   updateLetter();
@@ -332,6 +382,7 @@ function placementsChanged() {
   renderFontInfo();
   renderHeader();
   updateIdleStatus();
+  if (state.builds.has(configSignature())) void restoreBuild();
 }
 
 // When both ends of an axis come from the same variable font and differ on
@@ -519,7 +570,9 @@ async function handleBuild({ silent = false } = {}) {
     return;
   }
 
+  rememberPositions();
   if (!silent) clearResults();
+  const signature = configSignature();
   state.building = true;
   dom.buildButton.disabled = true;
   try {
@@ -571,6 +624,7 @@ async function handleBuild({ silent = false } = {}) {
     const bytes = pyodide.FS.readFile(result.outputPath);
     const fileBase = (result.familyName || "Varialo Variable").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
     state.build = { bytes, axes: result.axes, fileName: `${fileBase || "Varialo-Variable"}.ttf` };
+    state.buildSignature = signature;
     await loadPreviewFont(bytes);
     dom.downloadButton.disabled = false;
     // A new font starts in the middle of the space; an automatic rebuild
@@ -580,6 +634,9 @@ async function handleBuild({ silent = false } = {}) {
     // Show the result right away: the page scrolls to the preview.
     if (!silent) dom.previewPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     drawSpace();
+    state.builds.set(signature, { result, build: state.build, positions: [...state.positions] });
+    // keep the last few fonts only
+    while (state.builds.size > 12) state.builds.delete(state.builds.keys().next().value);
     setStatus("success", "status.ready");
   } catch (error) {
     console.error(error);

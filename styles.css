@@ -229,7 +229,7 @@ code,
 }
 
 .top-row {
-  grid-template-columns: minmax(280px, 4fr) minmax(0, 7fr);
+  grid-template-columns: minmax(230px, 3fr) minmax(0, 9fr);
 }
 
 .bottom-row {
@@ -360,7 +360,7 @@ code,
 .design-space {
   position: relative;
   width: calc(100% - 40px);
-  max-width: 560px;
+  max-width: 660px;
   margin: 28px auto 16px;
   container-type: inline-size;
 }
@@ -446,13 +446,13 @@ code,
 
 .handle,
 .space-point,
-.point-path {
+.guide {
   visibility: hidden;
 }
 
 .design-space.is-live .handle,
 .design-space.is-live .space-point,
-.design-space.is-live .point-path {
+.design-space.is-live .guide {
   visibility: visible;
 }
 
@@ -1944,4 +1944,358 @@ input[type="range"]::-moz-range-thumb {
 
 .axis-slider:disabled::-moz-range-thumb {
   background: var(--paper-dark);
+}
+
+/* ------------------------------------------------------------------ */
+/* Round 4: letters instead of frames, tiles, inline axis editing      */
+/* ------------------------------------------------------------------ */
+
+.wordmark {
+  transition: font-variation-settings 0.08s;
+}
+
+/* Library tiles */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.lib-tile {
+  position: relative;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  aspect-ratio: 1 / 1.12;
+  padding: 6px 4px 5px;
+  border: var(--line);
+  background: #fff;
+  cursor: grab;
+  user-select: none;
+}
+
+.lib-tile:hover {
+  background: var(--yellow-soft);
+}
+
+.lib-tile.is-selected {
+  background: var(--yellow);
+}
+
+.lib-tile:active {
+  cursor: grabbing;
+}
+
+.tile-glyph {
+  align-self: center;
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.tile-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+}
+
+.tile-badges {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  gap: 2px;
+}
+
+.tile-badges .lib-badge {
+  min-width: 16px;
+  height: 16px;
+  font-size: 0.62rem;
+}
+
+.tile-actions,
+.folder-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.tile-actions {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.lib-tile:hover .tile-actions,
+.lib-tile:focus-within .tile-actions,
+.lib-tile.is-selected .tile-actions {
+  opacity: 1;
+}
+
+.tile-action {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  background: var(--yellow);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tile-action:hover {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.lib-folder {
+  margin-bottom: 10px;
+}
+
+.lib-folder .lib-folder-head {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  margin-bottom: 8px;
+}
+
+.lib-folder.is-open .lib-folder-head {
+  border-bottom-width: 2px;
+}
+
+.folder-glyph {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.lib-folder .tile-grid {
+  padding-left: 12px;
+  border-left: var(--line);
+}
+
+.lib-folder .lib-notes,
+.lib-folder .lib-axis-picker {
+  margin: 0 0 8px 12px;
+  border: 0;
+  border-left: var(--line);
+}
+
+/* Vertices: only the letter */
+.vertex-node,
+.vertex-node.filled {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.vertex-node:hover,
+.vertex-node.dragover {
+  background: var(--yellow-soft);
+  transform: translate(-50%, -50%);
+}
+
+.vertex-node.dragover {
+  outline: 2px dashed var(--ink);
+}
+
+.vertex-node.can-place {
+  box-shadow: none;
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+.vertex-glyph {
+  font-size: calc(var(--node) * 1.05);
+  line-height: 1;
+}
+
+.vertex-plus {
+  display: grid;
+  place-items: center;
+  width: 50%;
+  aspect-ratio: 1;
+  border: var(--line);
+  background: var(--yellow);
+  font-size: calc(var(--node) * 0.3);
+  line-height: 1;
+}
+
+.vertex-node:hover .vertex-plus {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.vertex.is-base .vertex-caption strong {
+  padding: 0 4px;
+  background: var(--ink);
+  color: var(--paper-light);
+}
+
+.vertex.has-error .vertex-node {
+  background: transparent;
+  color: var(--ink);
+  outline: 3px dashed var(--ink);
+}
+
+.vertex.has-error .vertex-node:hover {
+  background: var(--yellow-soft);
+}
+
+/* The point inside the space: a letter of the variable font */
+.space-point {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--node) * 1.05);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.guide {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+}
+
+/* Values typed at the ends of the tracks */
+.ruler-input {
+  position: absolute;
+  z-index: 4;
+  min-width: 3ch;
+  padding: 1px 4px;
+  border: 0;
+  border-bottom: 2px solid var(--yellow);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ruler-input:hover,
+.ruler-input:focus {
+  background: var(--yellow-soft);
+  outline: none;
+}
+
+[data-anchor="middle"] {
+  transform: translate(-50%, -50%);
+}
+
+[data-anchor="end"] {
+  transform: translate(-100%, -50%);
+}
+
+[data-anchor="start"] {
+  transform: translate(0, -50%);
+}
+
+/* The Y chip runs along its vertical track, read from bottom to top */
+[data-anchor="vertical"] {
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+.vertex[data-anchor] {
+  transform: none;
+}
+
+/* Axis chip: click to name the axis */
+.axis-chip {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 46%;
+  padding: 3px 7px;
+  border: 2px solid var(--ink);
+  background: var(--yellow);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.axis-chip b {
+  font-size: 14px;
+}
+
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+}
+
+.chip-value {
+  padding-left: 6px;
+  border-left: 1px solid var(--ink);
+}
+
+.axis-chip:hover,
+.axis-chip.is-open {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+.axis-chip.has-error {
+  background: var(--ink);
+  color: var(--paper-light);
+  outline: 2px dashed var(--ink);
+  outline-offset: 2px;
+}
+
+.axis-editor {
+  position: absolute;
+  z-index: 10;
+  width: min(300px, 100%);
+  padding: 10px 12px 12px;
+  border: var(--line);
+  background: var(--paper-light);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.axis-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.axis-editor-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  background: var(--yellow);
+  cursor: pointer;
+}
+
+.axis-editor-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.axis-editor .axis-preset {
+  width: 100%;
+}
+
+.axis-errors {
+  margin: 0;
+  padding: 0 18px 8px;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.axis-errors:empty {
+  display: none;
 }

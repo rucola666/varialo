@@ -69,6 +69,77 @@ function readNames(view, start) {
   return names;
 }
 
+// Character map: returns a function telling whether a code point has a glyph.
+function readCmap(view, start) {
+  const count = view.getUint16(start + 2);
+  let best = null;
+  let bestScore = -1;
+  for (let i = 0; i < count; i++) {
+    const record = start + 4 + i * 8;
+    const platform = view.getUint16(record);
+    const encoding = view.getUint16(record + 2);
+    const offset = start + view.getUint32(record + 4);
+    const format = view.getUint16(offset);
+    let score = -1;
+    if (format === 12 && (platform === 3 || platform === 0)) score = 3;
+    else if (format === 4 && ((platform === 3 && encoding === 1) || platform === 0)) score = 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { offset, format };
+    }
+  }
+  if (!best) return () => false;
+  const { offset, format } = best;
+  if (format === 12) {
+    const groups = view.getUint32(offset + 12);
+    return (cp) => {
+      for (let g = 0; g < groups; g++) {
+        const base = offset + 16 + g * 12;
+        if (cp >= view.getUint32(base) && cp <= view.getUint32(base + 4)) {
+          return view.getUint32(base + 8) + (cp - view.getUint32(base)) !== 0;
+        }
+      }
+      return false;
+    };
+  }
+  const segX2 = view.getUint16(offset + 6);
+  const ends = offset + 14;
+  const starts = ends + segX2 + 2;
+  const deltas = starts + segX2;
+  const rangeOffsets = deltas + segX2;
+  return (cp) => {
+    if (cp > 0xffff) return false;
+    for (let s = 0; s < segX2; s += 2) {
+      if (cp > view.getUint16(ends + s)) continue;
+      const first = view.getUint16(starts + s);
+      if (cp < first) return false;
+      const delta = view.getInt16(deltas + s);
+      const rangeOffset = view.getUint16(rangeOffsets + s);
+      if (rangeOffset === 0) return ((cp + delta) & 0xffff) !== 0;
+      const glyphAt = rangeOffsets + s + rangeOffset + (cp - first) * 2;
+      const glyph = view.getUint16(glyphAt);
+      return glyph !== 0 && ((glyph + delta) & 0xffff) !== 0;
+    }
+    return false;
+  };
+}
+
+// The letter shown everywhere: "V" (of Varialo), otherwise the first glyph
+// available starting from "a".
+const LETTER_ORDER = ["V", ..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789"];
+
+export function pickLetter(infos) {
+  const list = infos.filter((info) => info?.hasChar);
+  if (!list.length) return "V";
+  for (const letter of LETTER_ORDER) {
+    if (list.every((info) => info.hasChar(letter.codePointAt(0)))) return letter;
+  }
+  for (const letter of LETTER_ORDER) {
+    if (list[0].hasChar(letter.codePointAt(0))) return letter;
+  }
+  return "V";
+}
+
 export function readFontInfo(buffer) {
   const view = new DataView(buffer);
   const signature = tag(view, 0);
@@ -123,6 +194,11 @@ export function readFontInfo(buffer) {
     }
   }
   if (tables.CFF2 !== undefined) info.outline = "CFF2";
+  try {
+    info.hasChar = tables.cmap !== undefined ? readCmap(view, tables.cmap) : () => false;
+  } catch {
+    info.hasChar = () => false;
+  }
   info.familyName = info.typoFamily || info.family || "";
   info.styleName = info.typoStyle || info.style || "";
   return info;

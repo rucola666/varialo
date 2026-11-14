@@ -966,3 +966,90 @@ def build_variable_font(request_json, output_path):
         inspection["issues"].append(_msg("build_failed"))
         inspection["buildError"] = str(exc).strip() or exc.__class__.__name__
         return json.dumps(inspection)
+
+
+# ---------------------------------------------------------------------------
+# Export single masters from the library
+# ---------------------------------------------------------------------------
+
+
+def _static_instance(path, location):
+    """Static font cut out of a variable font. CFF2 is turned back into CFF
+    when this fontTools version can do it, so font editors open it."""
+    font = TTFont(path)
+    full = {}
+    for axis in font["fvar"].axes:
+        value = location.get(axis.axisTag, axis.defaultValue)
+        full[axis.axisTag] = min(max(float(value), axis.minValue), axis.maxValue)
+    static = None
+    if "CFF2" in font:
+        try:
+            static = instancer.instantiateVariableFont(font, full, downgradeCFF2=True)
+        except TypeError:  # older fontTools: keep CFF2
+            static = None
+    if static is None:
+        static = instancer.instantiateVariableFont(font, full)
+    for table in ("STAT",):
+        if table in static:
+            del static[table]
+    return static
+
+
+def _name_master(font, family, style):
+    names = font["name"]
+    full_name = "%s %s" % (family, style)
+    ps = "%s-%s" % (_ps_name(family), _ps_name(style))
+    for name_id, value in (
+        (1, full_name if style not in ("Regular", "Italic", "Bold", "Bold Italic") else family),
+        (2, style if style in ("Regular", "Italic", "Bold", "Bold Italic") else "Regular"),
+        (3, "Varialo;%s" % ps),
+        (4, full_name),
+        (6, ps),
+        (16, family),
+        (17, style),
+    ):
+        names.removeNames(nameID=name_id)
+        names.setName(value, name_id, 3, 1, 0x409)
+
+
+def _export_one(entry, folder=None):
+    """entry: {path, location|null, styleName, fileName}. Returns (bytes, file name)."""
+    if entry.get("location") is None:
+        with open(entry["path"], "rb") as handle:
+            return handle.read(), entry["fileName"]
+    static = _static_instance(entry["path"], entry["location"])
+    family = _name(static, 16, 1) or "Varialo"
+    style = (entry.get("styleName") or "Instance").strip()
+    _name_master(static, family, style)
+    ext = ".otf" if ("CFF " in static or "CFF2" in static) else ".ttf"
+    buffer = BytesIO()
+    static.save(buffer)
+    base = "%s-%s" % (_ps_name(family), _ps_name(style.replace(" ", "_")) or "Instance")
+    return buffer.getvalue(), base + ext
+
+
+def export_master(request_json, output_path):
+    """Write one static master (original file, or a corner of a variable font)."""
+    entry = json.loads(request_json)
+    try:
+        data, file_name = _export_one(entry)
+        with open(output_path, "wb") as handle:
+            handle.write(data)
+        return json.dumps({"ok": True, "fileName": file_name, "outputPath": output_path})
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": str(exc) or exc.__class__.__name__})
+
+
+def export_folder(request_json, output_path):
+    """Write all corners of a variable font as static fonts in one .zip."""
+    import zipfile
+
+    request = json.loads(request_json)
+    try:
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for index, entry in enumerate(request["entries"]):
+                data, file_name = _export_one(entry)
+                archive.writestr("%s/%02d-%s" % (request["folderName"], index + 1, file_name), data)
+        return json.dumps({"ok": True, "fileName": request["folderName"] + ".zip", "outputPath": output_path})
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": str(exc) or exc.__class__.__name__})

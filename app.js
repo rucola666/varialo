@@ -3,7 +3,8 @@ import { AXIS_LETTERS, applyPreset, defaultAxis, presetForTag, PRESETS, tagFromN
 import { el, formatNumber, variationCss } from "./dom.js";
 import { corners, importFile, itemName, renderLibrary, resolve } from "./library.js";
 import { renderReport } from "./report.js";
-import { renderAxisRows, renderSpace, updateAxisRows, updateSpace } from "./space.js";
+import { renderSpace, updateSpace } from "./space.js";
+import { pickLetter } from "./fontinfo.js";
 
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const KEYS = "abcdefgh";
@@ -25,6 +26,7 @@ const state = {
   previewFace: null,
   previewUrl: null,
   fsPaths: {}, // library item id -> path in the Pyodide file system
+  letter: "V", // the letter shown everywhere (V, or the first glyph from "a")
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,7 +37,10 @@ const dom = {
   importButton: $("#import-button"),
   selection: $("#library-selection"),
   designSpace: $("#design-space"),
-  axisRows: $("#axis-rows"),
+  axisErrors: $("#axis-errors"),
+  wordmark: $(".wordmark"),
+  workspace: $(".workspace"),
+  topRow: $(".top-row"),
   axisRadios: Array.from(document.querySelectorAll('input[name="axis-count"]')),
   familyName: $("#family-name"),
   designer: $("#designer"),
@@ -77,6 +82,42 @@ function slotLabel(index) {
   return source ? `${key.toUpperCase()} · ${source.label}` : key.toUpperCase();
 }
 
+function updateLetter() {
+  const placed = activeKeys()
+    .map((key) => resolve(state.library, state.vertices[key])?.info)
+    .filter(Boolean);
+  const infos = placed.length ? placed : state.library.map((item) => item.info);
+  state.letter = pickLetter(infos);
+}
+
+// The VARIALO wordmark is set in the fonts being worked on: the variable font
+// once it exists (following the sliders), otherwise the font on vertex A, or
+// the first font of the library. Missing glyphs fall back to the interface font.
+function renderHeader() {
+  const word = dom.wordmark;
+  let family = null;
+  let variation = "";
+  if (isLive()) {
+    family = state.previewFace.family;
+    variation = variationCss(locationAt());
+  } else {
+    const source = resolve(state.library, state.vertices.a) ?? null;
+    if (source?.family) {
+      family = source.family;
+      variation = variationCss(source.location);
+    } else {
+      const first = state.library.find((item) => item.family);
+      if (first) {
+        family = first.family;
+        variation = variationCss(first.kind === "variable" ? first.pinned : null);
+      }
+    }
+  }
+  word.style.fontFamily = family ? `"${family}", var(--font-display)` : "";
+  word.style.fontVariationSettings = variation;
+  word.classList.toggle("is-custom", Boolean(family));
+}
+
 function placementsOf(ref) {
   return activeKeys()
     .filter((key) => {
@@ -109,7 +150,10 @@ async function importFiles(files) {
     state.library.push(item);
     added.push(item);
   }
+  updateLetter();
   drawLibrary();
+  drawSpace();
+  renderHeader();
   return added;
 }
 
@@ -137,6 +181,8 @@ function drawLibrary() {
       item.open = !item.open;
       drawLibrary();
     },
+    onDownload: (ref) => void downloadMaster(ref),
+    onDownloadFolder: (id) => void downloadFolder(id),
     onAxesChange: (id, axesUsed, pinned) => {
       const item = state.library.find((entry) => entry.id === id);
       item.axesUsed = axesUsed;
@@ -206,11 +252,12 @@ function clickVertex(key) {
 function placementsChanged() {
   clearResults();
   suggestAxes();
+  updateLetter();
   prefillExport();
   drawLibrary();
-  drawAxisRows();
   drawSpace();
   renderFontInfo();
+  renderHeader();
   updateIdleStatus();
 }
 
@@ -256,6 +303,9 @@ function spaceContext() {
     axes: state.axes,
     sources: sources(),
     selected: state.selected,
+    letter: state.letter,
+    pointFont: isLive() ? { family: state.previewFace.family, variation: variationCss(locationAt()) } : null,
+    errorList: dom.axisErrors,
     failing: failingKeys(),
     isLive,
     positions: () => state.positions,
@@ -273,7 +323,6 @@ function spaceContext() {
     },
     onPreset: (index, key) => {
       state.axes[index] = applyPreset(state.axes[index], key, index);
-      drawAxisRows();
       axesChanged();
     },
     onAxisInput: (index, patch) => {
@@ -295,21 +344,16 @@ function drawSpace() {
   }
 }
 
-function drawAxisRows() {
-  renderAxisRows(dom.axisRows, spaceContext());
-}
-
 function axesChanged() {
-  updateAxisRows(dom.axisRows, spaceContext());
   updateSpace(dom.designSpace, spaceContext());
   if (state.build || state.result?.ok === false) scheduleRebuild();
 }
 
 function updateLive() {
   updateSpace(dom.designSpace, spaceContext());
-  updateAxisRows(dom.axisRows, spaceContext());
   applyPreview();
   renderMatrix();
+  renderHeader();
 }
 
 function setAxisCount(count, { keepVertices = false } = {}) {
@@ -319,10 +363,7 @@ function setAxisCount(count, { keepVertices = false } = {}) {
     radio.checked = Number(radio.value) === count;
   });
   if (!keepVertices) placementsChanged();
-  else {
-    drawAxisRows();
-    drawSpace();
-  }
+  else drawSpace();
 }
 
 function axisErrors() {
@@ -438,6 +479,7 @@ async function handleBuild({ silent = false } = {}) {
     buildFn.destroy?.();
     state.result = result;
     renderReport(dom.reportPanel, dom.report, result, slotLabel);
+    placeReport(result.ok);
 
     if (!result.ok) {
       state.build = null;
@@ -462,10 +504,87 @@ async function handleBuild({ silent = false } = {}) {
     console.error(error);
     state.result = { ok: false, issues: [], warnings: [], buildError: error.message || String(error) };
     renderReport(dom.reportPanel, dom.report, state.result, slotLabel);
+    placeReport(false);
     setStatus("error", "status.engineFailed");
   } finally {
     state.building = false;
     dom.buildButton.disabled = false;
+  }
+}
+
+// The report sits at the bottom of the page, unless the font could not be
+// built: then it goes right under the design space.
+function placeReport(ok) {
+  if (ok) dom.workspace.append(dom.reportPanel);
+  else dom.topRow.after(dom.reportPanel);
+}
+
+function saveBytes(bytes, fileName, type) {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportEntry(source, path) {
+  return {
+    path,
+    location: source.location,
+    styleName: source.styleName,
+    fileName: source.file.name,
+  };
+}
+
+// Download a font of the library as a static font (a corner of a variable
+// font is cut out with the engine, so it can be edited on its own).
+async function downloadMaster(ref) {
+  const source = resolve(state.library, ref);
+  if (!source) return;
+  if (!source.location) {
+    saveBytes(await source.file.arrayBuffer(), source.file.name, "font/ttf");
+    return;
+  }
+  try {
+    const pyodide = await ensureEngine();
+    setStatus("working", "status.exporting");
+    const fn = pyodide.globals.get("export_master");
+    const output = `/tmp/export-${Date.now()}`;
+    const result = JSON.parse(fn(JSON.stringify(exportEntry(source, await fsPath(pyodide, source.item))), output));
+    fn.destroy?.();
+    if (!result.ok) throw new Error(result.error);
+    saveBytes(pyodide.FS.readFile(output), result.fileName, "font/ttf");
+    setStatus("success", "status.exported", { name: result.fileName });
+  } catch (error) {
+    console.error(error);
+    setStatus("error", "status.exportFailed", { error: error.message || String(error) });
+  }
+}
+
+async function downloadFolder(id) {
+  const item = state.library.find((entry) => entry.id === id);
+  if (!item) return;
+  try {
+    const pyodide = await ensureEngine();
+    setStatus("working", "status.exporting");
+    const path = await fsPath(pyodide, item);
+    const entries = corners(item).map((corner) =>
+      exportEntry(resolve(state.library, { item: id, child: corner.index }), path),
+    );
+    const folderName = itemName(item).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "Varialo";
+    const fn = pyodide.globals.get("export_folder");
+    const output = `/tmp/export-${Date.now()}.zip`;
+    const result = JSON.parse(fn(JSON.stringify({ folderName, entries }), output));
+    fn.destroy?.();
+    if (!result.ok) throw new Error(result.error);
+    saveBytes(pyodide.FS.readFile(output), result.fileName, "application/zip");
+    setStatus("success", "status.exported", { name: result.fileName });
+  } catch (error) {
+    console.error(error);
+    setStatus("error", "status.exportFailed", { error: error.message || String(error) });
   }
 }
 
@@ -568,7 +687,7 @@ function renderMatrix() {
       const positions = [...state.positions];
       positions[0] = column;
       if (twoD) positions[1] = row;
-      const cell = el("button", "instance-cell", "A");
+      const cell = el("button", "instance-cell", state.letter);
       cell.type = "button";
       cell.classList.toggle("is-current", near(state.positions[0], column) && (!twoD || near(state.positions[1], row)));
       cell.addEventListener("click", () => {
@@ -681,6 +800,7 @@ function clearResults() {
   renderMatrix();
   applyPreview();
   renderReport(dom.reportPanel, dom.report, null, slotLabel);
+  renderHeader();
 }
 
 function clearVertices() {
@@ -700,7 +820,6 @@ function renderLanguage() {
   });
   renderStatus();
   drawLibrary();
-  drawAxisRows();
   renderSpace(dom.designSpace, spaceContext());
   renderPreviewPlaceholder();
   renderFontInfo();

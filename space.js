@@ -1,8 +1,10 @@
-// The design space: line / square / cube with the vertices where the fonts go,
-// one slider track per axis (same length as the edges) and the point that
-// shows where the preview is inside the space.
+// The design space: line / square / cube with the vertices where the fonts go.
+// It is also the interface of the axes: every axis has a track (same length as
+// the edges) with a handle, its values typed at the two ends, and a chip to
+// name it. After building, a letter in the variable font shows where you are,
+// with dashed guides coming from each handle.
 
-import { AXIS_LETTERS, PRESETS, positionOf, valueAt, validateAxis } from "./axes.js";
+import { AXIS_LETTERS, PRESETS, validateAxis, valueAt } from "./axes.js";
 import { el, formatNumber, svgEl, variationCss } from "./dom.js";
 import { DRAG_TYPE } from "./library.js";
 import { t } from "./i18n.js";
@@ -12,39 +14,69 @@ import { t } from "./i18n.js";
 // ---------------------------------------------------------------------------
 
 const DEPTH_ANGLE = (38 * Math.PI) / 180;
+const DEPTH = [Math.cos(DEPTH_ANGLE), -Math.sin(DEPTH_ANGLE)];
+const DEPTH_NORMAL = [Math.sin(DEPTH_ANGLE), Math.cos(DEPTH_ANGLE)]; // points down-right
 
 function add(p, q, k = 1) {
   return [p[0] + q[0] * k, p[1] + q[1] * k];
 }
 
+function horizontalRuler(from, to) {
+  return {
+    from,
+    to,
+    start: [from[0], from[1] + 24, "middle"],
+    end: [to[0], to[1] + 24, "middle"],
+    chip: [(from[0] + to[0]) / 2, from[1] + 50, "middle"],
+  };
+}
+
+function verticalRuler(from, to) {
+  return {
+    from,
+    to,
+    start: [from[0] - 12, from[1], "end"],
+    end: [to[0] - 12, to[1], "end"],
+    chip: [from[0] - 30, (from[1] + to[1]) / 2, "vertical"],
+  };
+}
+
+function depthRuler(from, to) {
+  const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+  return {
+    from,
+    to,
+    start: [from[0] + DEPTH_NORMAL[0] * 22, from[1] + DEPTH_NORMAL[1] * 22, "start"],
+    end: [to[0] + DEPTH_NORMAL[0] * 22, to[1] + DEPTH_NORMAL[1] * 22, "start"],
+    chip: [mid[0] + DEPTH_NORMAL[0] * 30, mid[1] + DEPTH_NORMAL[1] * 30, "start"],
+  };
+}
+
 export function geometry(count) {
   if (count === 1) {
-    const L = 300;
-    const A = [70, 70];
-    const X = [L, 0];
+    const L = 320;
+    const A = [80, 90];
     return {
       count,
       L,
-      viewBox: [440, 205],
+      viewBox: [480, 260],
       basis: [[1, 0]],
       origin: A,
-      vertices: { a: [...A, "above"], b: [...add(A, X), "above"] },
-      edges: [[A, add(A, X), "X"]],
-      rulers: [horizontalRuler([70, 142], [370, 142])],
+      vertices: { a: [...A, "above"], b: [...add(A, [L, 0]), "above"] },
+      edges: [[A, add(A, [L, 0]), "X"]],
+      rulers: [horizontalRuler([A[0], A[1] + 76], [A[0] + L, A[1] + 76])],
     };
   }
   if (count === 2) {
-    const L = 240;
-    const A = [150, 80];
-    const X = [L, 0];
-    const Y = [0, L];
-    const B = add(A, X);
-    const C = add(A, Y);
-    const D = add(C, X);
+    const L = 260;
+    const A = [170, 80];
+    const B = add(A, [L, 0]);
+    const C = add(A, [0, L]);
+    const D = add(C, [L, 0]);
     return {
       count,
       L,
-      viewBox: [470, 470],
+      viewBox: [500, 530],
       basis: [[1, 0], [0, 1]],
       origin: A,
       vertices: { a: [...A, "above"], b: [...B, "above"], c: [...C, "below"], d: [...D, "below"] },
@@ -54,29 +86,25 @@ export function geometry(count) {
         [A, C, "Y"],
         [B, D, "Y"],
       ],
-      rulers: [horizontalRuler([C[0], C[1] + 86], [D[0], D[1] + 86]), verticalRuler([A[0] - 62, A[1]], [C[0] - 62, C[1]])],
+      rulers: [horizontalRuler([C[0], C[1] + 82], [D[0], D[1] + 82]), verticalRuler([A[0] - 58, A[1]], [C[0] - 58, C[1]])],
     };
   }
   // Cube, oblique projection: X, Y and the depth Z have the same length.
-  const L = 200;
-  const depth = [Math.cos(DEPTH_ANGLE), -Math.sin(DEPTH_ANGLE)];
-  const A = [150, 196];
-  const X = [L, 0];
-  const Y = [0, L];
-  const Z = [depth[0] * L, depth[1] * L];
-  const B = add(A, X);
-  const C = add(A, Y);
-  const D = add(C, X);
+  const L = 210;
+  const A = [170, 210];
+  const Z = [DEPTH[0] * L, DEPTH[1] * L];
+  const B = add(A, [L, 0]);
+  const C = add(A, [0, L]);
+  const D = add(C, [L, 0]);
   const E = add(A, Z);
   const F = add(B, Z);
   const G = add(C, Z);
   const H = add(D, Z);
-  const zShift = [46, 0]; // the Z track runs parallel to C–G, a bit to the right
   return {
     count,
     L,
-    viewBox: [570, 540],
-    basis: [[1, 0], [0, 1], depth],
+    viewBox: [690, 600],
+    basis: [[1, 0], [0, 1], DEPTH],
     origin: A,
     vertices: {
       a: [...A, "above"],
@@ -95,140 +123,91 @@ export function geometry(count) {
       [E, G, "Y", "back"],
       [A, E, "Z"],
       [B, F, "Z"],
-      [D, H, "Z"],
-      [C, G, "Z", "axis"],
+      [C, G, "Z", "back"],
+      [D, H, "Z", "axis"],
       [A, B, "X"],
       [B, D, "Y"],
       [C, D, "X"],
       [A, C, "Y"],
     ],
     rulers: [
-      horizontalRuler([C[0], C[1] + 86], [D[0], D[1] + 86]),
-      verticalRuler([A[0] - 62, A[1]], [C[0] - 62, C[1]]),
-      depthRuler(add(C, zShift), add(G, zShift), depth),
+      horizontalRuler([C[0], C[1] + 82], [D[0], D[1] + 82]),
+      verticalRuler([A[0] - 58, A[1]], [C[0] - 58, C[1]]),
+      // Z runs outside the cube, to the right of D–H
+      depthRuler(add(D, DEPTH_NORMAL, 54), add(H, DEPTH_NORMAL, 54)),
     ],
-  };
-}
-
-// Each track knows where its labels go: values at the two ends, axis letter.
-function horizontalRuler(from, to) {
-  return {
-    from,
-    to,
-    labels: {
-      start: [from[0], from[1] + 22, "middle"],
-      end: [to[0], to[1] + 22, "middle"],
-      letter: [(from[0] + to[0]) / 2, from[1] + 30, "middle"],
-    },
-  };
-}
-
-function verticalRuler(from, to) {
-  return {
-    from,
-    to,
-    labels: {
-      start: [from[0] - 14, from[1], "end"],
-      end: [to[0] - 14, to[1], "end"],
-      letter: [from[0] - 14, from[1] + 64, "end"],
-    },
-  };
-}
-
-function depthRuler(from, to, direction) {
-  const normal = [Math.sin(DEPTH_ANGLE), Math.cos(DEPTH_ANGLE)];
-  const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-  return {
-    from,
-    to,
-    labels: {
-      start: [from[0], from[1] + 22, "middle"],
-      end: [to[0] + direction[0] * 16, to[1] + direction[1] * 16, "start"],
-      letter: [mid[0] + normal[0] * 22, mid[1] + normal[1] * 22, "start"],
-    },
   };
 }
 
 function pointAt(geo, positions) {
   let p = geo.origin;
-  positions.slice(0, geo.count).forEach((tValue, i) => {
-    p = add(p, geo.basis[i], tValue * geo.L);
+  positions.slice(0, geo.count).forEach((value, i) => {
+    p = add(p, geo.basis[i], value * geo.L);
   });
   return p;
 }
 
-function pathTo(geo, positions) {
-  const points = [geo.origin];
-  let p = geo.origin;
-  positions.slice(0, geo.count).forEach((tValue, i) => {
-    p = add(p, geo.basis[i], tValue * geo.L);
-    points.push(p);
-  });
-  return points;
+function handleAt(ruler, value) {
+  return [ruler.from[0] + (ruler.to[0] - ruler.from[0]) * value, ruler.from[1] + (ruler.to[1] - ruler.from[1]) * value];
 }
 
 // ---------------------------------------------------------------------------
-// Diagram
+// Rendering
 // ---------------------------------------------------------------------------
+
+function percent(container, [x, y]) {
+  const [width, height] = geometry(Number(container.dataset.axes)).viewBox;
+  return [`${((x / width) * 100).toFixed(3)}%`, `${((y / height) * 100).toFixed(3)}%`];
+}
+
+function placeAt(node, container, position, anchor = "middle") {
+  const [left, top] = percent(container, position);
+  node.style.left = left;
+  node.style.top = top;
+  node.dataset.anchor = anchor;
+}
 
 export function renderSpace(container, ctx) {
   const geo = geometry(ctx.axisCount);
   const [width, height] = geo.viewBox;
   container.innerHTML = "";
-  container.style.aspectRatio = `${width} / ${height}`;
   container.dataset.axes = String(ctx.axisCount);
+  container.style.aspectRatio = `${width} / ${height}`;
 
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, class: "space-svg" });
   const edges = svgEl("g", { class: "edges" }, svg);
   for (const [p, q, axis, kind] of geo.edges) {
     svgEl("line", { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: `edge edge-${axis}${kind ? ` edge-${kind}` : ""}` }, edges);
   }
-  svgEl("polyline", { class: "point-path", points: "" }, svg);
+  const plane =
+    ctx.axisCount === 2
+      ? svgEl("rect", { class: "plane", x: geo.origin[0], y: geo.origin[1], width: geo.L, height: geo.L }, svg)
+      : null;
+  const guides = svgEl("g", { class: "guides" }, svg);
+  geo.rulers.forEach((_, i) => svgEl("line", { class: "guide", "data-axis": i }, guides));
 
-  // Tracks
   geo.rulers.forEach((ruler, i) => {
     const group = svgEl("g", { class: "ruler", "data-axis": i }, svg);
     const [fx, fy] = ruler.from;
     const [tx, ty] = ruler.to;
     svgEl("line", { x1: fx, y1: fy, x2: tx, y2: ty, class: "ruler-hit" }, group);
     svgEl("line", { x1: fx, y1: fy, x2: tx, y2: ty, class: "ruler-line" }, group);
-    const dx = tx - fx;
-    const dy = ty - fy;
-    const len = Math.hypot(dx, dy);
-    const nx = (-dy / len) * 6;
-    const ny = (dx / len) * 6;
+    const len = Math.hypot(tx - fx, ty - fy);
+    const nx = (-(ty - fy) / len) * 6;
+    const ny = ((tx - fx) / len) * 6;
     for (const [x, y] of [ruler.from, ruler.to]) {
       svgEl("line", { x1: x - nx, y1: y - ny, x2: x + nx, y2: y + ny, class: "ruler-tick" }, group);
     }
-    const label = (role, className) => {
-      const [x, y, anchor] = ruler.labels[role];
-      const text = svgEl("text", { class: className, x, y, "text-anchor": anchor }, group);
-      text.dataset.role = role;
-      return text;
-    };
-    label("start", "ruler-value");
-    label("end", "ruler-value");
-    const letter = label("letter", "ruler-letter");
-    letter.textContent = AXIS_LETTERS[i];
-    const [lx, ly, anchor] = ruler.labels.letter;
-    svgEl("text", { class: "ruler-tag", x: lx, y: ly + 17, "text-anchor": anchor }, group);
     svgEl("circle", { class: "handle", r: 10, cx: fx, cy: fy, tabindex: 0, role: "slider", "data-axis": i }, group);
     wireRuler(svg, group, ruler, i, ctx);
   });
-
-  // In the square the whole surface is a 2D slider: press anywhere inside.
-  const plane =
-    ctx.axisCount === 2
-      ? svgEl("rect", { class: "plane", x: geo.origin[0], y: geo.origin[1], width: geo.L, height: geo.L }, svg)
-      : null;
-  const point = svgEl("circle", { class: "space-point", r: 8 }, svg);
-  if (plane) wirePoint(svg, [plane, point], geo, ctx);
   container.append(svg);
+  if (plane) wirePlane(svg, plane, geo, ctx);
 
+  // Vertices: just the letter, no frame
   for (const [key, [x, y, side, depth]] of Object.entries(geo.vertices)) {
     const vertex = el("div", `vertex label-${side}${depth ? ` is-${depth}` : ""}`);
-    vertex.style.left = `${((x / width) * 100).toFixed(3)}%`;
-    vertex.style.top = `${((y / height) * 100).toFixed(3)}%`;
+    placeAt(vertex, container, [x, y]);
     vertex.dataset.key = key;
     const input = el("input", "vertex-input");
     input.type = "file";
@@ -265,7 +244,39 @@ export function renderSpace(container, ctx) {
     container.append(vertex);
   }
 
-  // Dropping a whole folder anywhere on the diagram fills every vertex.
+  // The point: a letter in the variable font
+  const point = el("span", "space-point", "");
+  point.setAttribute("aria-hidden", "true");
+  container.append(point);
+
+  // Axis editing, directly on the tracks
+  geo.rulers.forEach((ruler, i) => {
+    for (const end of ["start", "end"]) {
+      const input = el("input", `ruler-input ruler-${end}`);
+      input.type = "text";
+      input.inputMode = "decimal";
+      input.dataset.axis = i;
+      input.dataset.end = end;
+      input.setAttribute("aria-label", `${AXIS_LETTERS[i]} · ${t(end === "start" ? "axis.start" : "axis.end")}`);
+      input.title = t(end === "start" ? "axis.start" : "axis.end");
+      input.addEventListener("input", () => {
+        const clean = input.value.replace(",", ".");
+        ctx.onAxisInput(i, { [end]: clean });
+      });
+      placeAt(input, container, ruler[end].slice(0, 2), ruler[end][2]);
+      container.append(input);
+    }
+    const chip = el("button", "axis-chip");
+    chip.type = "button";
+    chip.dataset.axis = i;
+    chip.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleEditor(container, ctx, i, chip);
+    });
+    placeAt(chip, container, ruler.chip.slice(0, 2), ruler.chip[2]);
+    container.append(chip);
+  });
+
   container.addEventListener("dragover", (event) => {
     if ([...event.dataTransfer.types].includes(DRAG_TYPE)) event.preventDefault();
   });
@@ -280,6 +291,121 @@ export function renderSpace(container, ctx) {
   updateSpace(container, ctx);
 }
 
+// ---------------------------------------------------------------------------
+// Axis editor (popover next to the chip)
+// ---------------------------------------------------------------------------
+
+const PRESET_ORDER = ["custom", "wght", "wdth", "ital", "slnt", "opsz"];
+
+function closeEditor(container) {
+  container.querySelector(".axis-editor")?.remove();
+  container.querySelectorAll(".axis-chip.is-open").forEach((chip) => chip.classList.remove("is-open"));
+}
+
+function toggleEditor(container, ctx, index, chip) {
+  const open = container.querySelector(`.axis-editor[data-axis="${index}"]`);
+  closeEditor(container);
+  if (open) return;
+  chip.classList.add("is-open");
+  const axis = ctx.axes[index];
+  const editor = el("div", "axis-editor");
+  editor.dataset.axis = index;
+  editor.addEventListener("click", (event) => event.stopPropagation());
+
+  const head = el("div", "axis-editor-head");
+  head.append(el("strong", "", `${t("axis.title")} ${AXIS_LETTERS[index]}`));
+  const close = el("button", "axis-editor-close", "×");
+  close.type = "button";
+  close.title = t("axis.close");
+  close.addEventListener("click", () => closeEditor(container));
+  head.append(close);
+
+  const preset = el("select", "axis-preset");
+  preset.setAttribute("aria-label", t("axis.preset"));
+  for (const key of PRESET_ORDER) {
+    const option = el("option", "", key === "custom" ? t("axis.custom") : `${PRESETS[key].name} · ${key}`);
+    option.value = key;
+    option.selected = axis.preset === key;
+    preset.append(option);
+  }
+  preset.addEventListener("change", () => {
+    ctx.onPreset(index, preset.value);
+    closeEditor(container);
+    toggleEditor(container, ctx, index, container.querySelector(`.axis-chip[data-axis="${index}"]`));
+  });
+
+  const field = (labelKey, input) => {
+    const wrap = el("label", "axis-field");
+    wrap.append(el("span", "", t(labelKey)), input);
+    return wrap;
+  };
+  const tag = el("input", "axis-tag");
+  tag.value = axis.tag;
+  tag.maxLength = 4;
+  tag.spellcheck = false;
+  tag.autocomplete = "off";
+  tag.readOnly = axis.preset !== "custom";
+  tag.addEventListener("input", () => {
+    const clean = tag.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 4);
+    if (clean !== tag.value) tag.value = clean;
+    ctx.onAxisInput(index, { tag: clean, tagEdited: true });
+  });
+  const name = el("input", "axis-name");
+  name.value = axis.name;
+  name.maxLength = 64;
+  name.autocomplete = "off";
+  name.addEventListener("input", () => {
+    ctx.onAxisInput(index, { name: name.value });
+    if (!ctx.axes[index].tagEdited && ctx.axes[index].preset === "custom") tag.value = ctx.axes[index].tag;
+  });
+  const fields = el("div", "axis-editor-fields");
+  fields.append(field("axis.preset", preset), field("axis.tag", tag), field("axis.name", name));
+
+  const info = el("ul", "axis-problems");
+  editor.append(head, fields, info);
+  container.append(editor);
+
+  // Position: under the chip, kept inside the drawing
+  const chipBox = chip.getBoundingClientRect();
+  const box = container.getBoundingClientRect();
+  const left = Math.min(Math.max(chipBox.left - box.left, 0), Math.max(0, box.width - editor.offsetWidth));
+  editor.style.left = `${left}px`;
+  editor.style.top = `${chipBox.bottom - box.top + 6}px`;
+  updateEditor(container, ctx);
+  name.focus();
+}
+
+function updateEditor(container, ctx) {
+  const editor = container.querySelector(".axis-editor");
+  if (!editor) return;
+  const index = Number(editor.dataset.axis);
+  const axes = ctx.axes.slice(0, ctx.axisCount);
+  const axis = axes[index];
+  const list = editor.querySelector(".axis-problems");
+  list.innerHTML = "";
+  const problems = validateAxis(axis, axes);
+  for (const problem of problems) list.append(el("li", `axis-problem ${problem.level}`, t(problem.key, problem.params)));
+  if (!problems.length) {
+    list.append(
+      el(
+        "li",
+        "axis-problem info",
+        axis.preset === "custom" ? t("axis.info.custom", { tag: axis.tag }) : t(`axis.info.${axis.preset}`),
+      ),
+    );
+  }
+}
+
+// Close the editor when clicking elsewhere / pressing Escape.
+document.addEventListener("click", () => document.querySelectorAll(".design-space").forEach(closeEditor));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") document.querySelectorAll(".design-space").forEach(closeEditor);
+});
+
+// ---------------------------------------------------------------------------
+// Interaction
+// ---------------------------------------------------------------------------
+
 function svgPoint(svg, event) {
   const pt = svg.createSVGPoint();
   pt.x = event.clientX;
@@ -291,16 +417,13 @@ function projectOnRuler(ruler, p) {
   const [fx, fy] = ruler.from;
   const dx = ruler.to[0] - fx;
   const dy = ruler.to[1] - fy;
-  const tValue = ((p.x - fx) * dx + (p.y - fy) * dy) / (dx * dx + dy * dy);
-  return Math.min(1, Math.max(0, tValue));
+  const value = ((p.x - fx) * dx + (p.y - fy) * dy) / (dx * dx + dy * dy);
+  return Math.min(1, Math.max(0, value));
 }
 
 function wireRuler(svg, group, ruler, index, ctx) {
   let dragging = false;
-  const move = (event) => {
-    if (!ctx.isLive()) return;
-    ctx.onMove(index, projectOnRuler(ruler, svgPoint(svg, event)));
-  };
+  const move = (event) => ctx.onMove(index, projectOnRuler(ruler, svgPoint(svg, event)));
   group.addEventListener("pointerdown", (event) => {
     if (!ctx.isLive()) return;
     dragging = true;
@@ -315,8 +438,7 @@ function wireRuler(svg, group, ruler, index, ctx) {
   };
   group.addEventListener("pointerup", stop);
   group.addEventListener("pointercancel", stop);
-  const handle = group.querySelector(".handle");
-  handle.addEventListener("keydown", (event) => {
+  group.querySelector(".handle").addEventListener("keydown", (event) => {
     if (!ctx.isLive()) return;
     const step = event.shiftKey ? 0.1 : 0.01;
     const current = ctx.positions()[index];
@@ -329,32 +451,30 @@ function wireRuler(svg, group, ruler, index, ctx) {
   });
 }
 
-function wirePoint(svg, targets, geo, ctx) {
-  const point = targets[targets.length - 1];
-  let dragging = null;
+// In the square the whole surface is a 2D slider.
+function wirePlane(svg, plane, geo, ctx) {
+  let dragging = false;
   const move = (event) => {
     const p = svgPoint(svg, event);
-    const tx = Math.min(1, Math.max(0, (p.x - geo.origin[0]) / geo.L));
-    const ty = Math.min(1, Math.max(0, (p.y - geo.origin[1]) / geo.L));
-    ctx.onMovePoint([tx, ty]);
+    ctx.onMovePoint([
+      Math.min(1, Math.max(0, (p.x - geo.origin[0]) / geo.L)),
+      Math.min(1, Math.max(0, (p.y - geo.origin[1]) / geo.L)),
+    ]);
   };
-  for (const target of targets) {
-    target.addEventListener("pointerdown", (event) => {
-      if (!ctx.isLive()) return;
-      dragging = target;
-      target.setPointerCapture(event.pointerId);
-      point.classList.add("is-dragging");
-      move(event);
-    });
-    target.addEventListener("pointermove", (event) => dragging === target && move(event));
-    const stop = () => {
-      dragging = null;
-      point.classList.remove("is-dragging");
-    };
-    target.addEventListener("pointerup", stop);
-    target.addEventListener("pointercancel", stop);
-  }
+  plane.addEventListener("pointerdown", (event) => {
+    if (!ctx.isLive()) return;
+    dragging = true;
+    plane.setPointerCapture(event.pointerId);
+    move(event);
+  });
+  plane.addEventListener("pointermove", (event) => dragging && move(event));
+  plane.addEventListener("pointerup", () => (dragging = false));
+  plane.addEventListener("pointercancel", () => (dragging = false));
 }
+
+// ---------------------------------------------------------------------------
+// Update (cheap: called while dragging)
+// ---------------------------------------------------------------------------
 
 export function updateSpace(container, ctx) {
   const svg = container.querySelector(".space-svg");
@@ -362,28 +482,45 @@ export function updateSpace(container, ctx) {
   const geo = geometry(ctx.axisCount);
   const live = ctx.isLive();
   const positions = ctx.positions();
+  const axes = ctx.axes.slice(0, ctx.axisCount);
   container.classList.toggle("is-live", live);
 
+  const [px, py] = pointAt(geo, positions);
   geo.rulers.forEach((ruler, i) => {
-    const group = svg.querySelector(`.ruler[data-axis="${i}"]`);
-    const axis = ctx.axes[i];
-    group.querySelector('[data-role="start"]').textContent = formatNumber(Number(axis.start));
-    group.querySelector('[data-role="end"]').textContent = formatNumber(Number(axis.end));
-    group.querySelector(".ruler-tag").textContent = axis.tag;
-    const handle = group.querySelector(".handle");
-    const tValue = positions[i] ?? 0;
-    handle.setAttribute("cx", ruler.from[0] + (ruler.to[0] - ruler.from[0]) * tValue);
-    handle.setAttribute("cy", ruler.from[1] + (ruler.to[1] - ruler.from[1]) * tValue);
-    handle.setAttribute("aria-valuetext", `${axis.tag} ${formatNumber(valueAt(axis, tValue))}`);
+    const axis = axes[i];
+    const [hx, hy] = handleAt(ruler, positions[i] ?? 0);
+    const handle = svg.querySelector(`.handle[data-axis="${i}"]`);
+    handle.setAttribute("cx", hx);
+    handle.setAttribute("cy", hy);
     handle.setAttribute("aria-label", `${AXIS_LETTERS[i]} · ${axis.name}`);
+    handle.setAttribute("aria-valuetext", `${axis.tag} ${formatNumber(valueAt(axis, positions[i] ?? 0))}`);
+    const guide = svg.querySelector(`.guide[data-axis="${i}"]`);
+    guide.setAttribute("x1", hx);
+    guide.setAttribute("y1", hy);
+    guide.setAttribute("x2", px);
+    guide.setAttribute("y2", py);
+
+    for (const end of ["start", "end"]) {
+      const input = container.querySelector(`.ruler-input[data-axis="${i}"][data-end="${end}"]`);
+      if (document.activeElement !== input) input.value = axis[end];
+      input.style.width = `${Math.max(2, String(input.value).length) + 1.5}ch`;
+    }
+    const chip = container.querySelector(`.axis-chip[data-axis="${i}"]`);
+    const errors = validateAxis(axis, axes).filter((p) => p.level === "error");
+    chip.classList.toggle("has-error", errors.length > 0);
+    chip.innerHTML = "";
+    chip.append(el("b", "", AXIS_LETTERS[i]), el("span", "chip-tag", axis.tag), el("span", "chip-name", axis.name));
+    chip.title = t("axis.edit");
+    if (live) chip.append(el("span", "chip-value", formatNumber(valueAt(axis, positions[i] ?? 0))));
   });
 
-  const point = svg.querySelector(".space-point");
-  const [px, py] = pointAt(geo, positions);
-  point.setAttribute("cx", px);
-  point.setAttribute("cy", py);
-  point.classList.toggle("is-draggable", ctx.axisCount === 2);
-  svg.querySelector(".point-path").setAttribute("points", pathTo(geo, positions).map((p) => p.join(",")).join(" "));
+  const point = container.querySelector(".space-point");
+  placeAt(point, container, [px, py]);
+  point.textContent = ctx.letter;
+  if (live && ctx.pointFont) {
+    point.style.fontFamily = `"${ctx.pointFont.family}", var(--font-display)`;
+    point.style.fontVariationSettings = ctx.pointFont.variation;
+  }
 
   for (const vertex of container.querySelectorAll(".vertex")) {
     const key = vertex.dataset.key;
@@ -391,22 +528,21 @@ export function updateSpace(container, ctx) {
     const source = ctx.sources[key];
     node.innerHTML = "";
     node.classList.toggle("filled", Boolean(source));
-    node.classList.toggle("base", key === "a");
     node.classList.toggle("can-place", Boolean(ctx.selected));
+    vertex.classList.toggle("is-base", key === "a");
     vertex.classList.toggle("has-error", ctx.failing.has(key));
     const index = key.charCodeAt(0) - 97;
-    const coords = ctx.axes
-      .slice(0, ctx.axisCount)
+    const coords = axes
       .map((axis, i) => `${axis.tag} ${formatNumber((index >> i) & 1 ? Number(axis.end) : Number(axis.start))}`)
       .join(" · ");
     if (source) {
-      const glyph = el("span", "vertex-glyph", "A");
+      const glyph = el("span", "vertex-glyph", ctx.letter);
       if (source.family) glyph.style.fontFamily = `"${source.family}", var(--font-display)`;
       if (source.location) glyph.style.fontVariationSettings = variationCss(source.location);
       node.append(glyph);
       node.title = `${key.toUpperCase()} · ${source.label}\n${coords}`;
     } else {
-      node.textContent = "+";
+      node.append(el("span", "vertex-plus", "+"));
       node.title = `${t("slot.empty", { vertex: key.toUpperCase() })}\n${coords}`;
     }
     node.setAttribute("aria-label", node.title);
@@ -414,113 +550,21 @@ export function updateSpace(container, ctx) {
     label.textContent = source ? source.shortLabel : "";
     label.title = source ? source.label : "";
   }
+
+  updateEditor(container, ctx);
+  renderAxisErrors(ctx);
 }
 
-// ---------------------------------------------------------------------------
-// Axis rows (under the diagram)
-// ---------------------------------------------------------------------------
-
-const PRESET_ORDER = ["custom", "wght", "wdth", "ital", "slnt", "opsz"];
-
-export function renderAxisRows(container, ctx) {
-  container.innerHTML = "";
-  ctx.axes.slice(0, ctx.axisCount).forEach((axis, i) => {
-    const row = el("div", "axis-row");
-    row.dataset.axis = i;
-
-    const head = el("div", "axis-row-head");
-    head.append(el("span", "axis-badge", AXIS_LETTERS[i]));
-    const preset = el("select", "axis-preset");
-    preset.setAttribute("aria-label", t("axis.preset"));
-    for (const key of PRESET_ORDER) {
-      const option = el("option", "", key === "custom" ? t("axis.custom") : `${PRESETS[key].name} · ${key}`);
-      option.value = key;
-      option.selected = axis.preset === key;
-      preset.append(option);
-    }
-    preset.addEventListener("change", () => ctx.onPreset(i, preset.value));
-    head.append(preset);
-
-    const fields = el("div", "axis-fields");
-    const field = (labelKey, input) => {
-      const wrap = el("label", "axis-field");
-      wrap.append(el("span", "", t(labelKey)), input);
-      return wrap;
-    };
-    const tag = el("input", "axis-tag");
-    tag.value = axis.tag;
-    tag.maxLength = 4;
-    tag.spellcheck = false;
-    tag.autocomplete = "off";
-    tag.readOnly = axis.preset !== "custom";
-    tag.addEventListener("input", () => {
-      const clean = tag.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 4);
-      if (clean !== tag.value) tag.value = clean;
-      ctx.onAxisInput(i, { tag: clean, tagEdited: true });
-    });
-    const name = el("input", "axis-name");
-    name.value = axis.name;
-    name.maxLength = 64;
-    name.autocomplete = "off";
-    name.addEventListener("input", () => ctx.onAxisInput(i, { name: name.value }));
-    const start = el("input", "axis-start");
-    start.type = "number";
-    start.step = "any";
-    start.value = axis.start;
-    start.addEventListener("input", () => ctx.onAxisInput(i, { start: start.value }));
-    const end = el("input", "axis-end");
-    end.type = "number";
-    end.step = "any";
-    end.value = axis.end;
-    end.addEventListener("input", () => ctx.onAxisInput(i, { end: end.value }));
-    fields.append(field("axis.tag", tag), field("axis.name", name), field("axis.start", start), field("axis.end", end));
-
-    const slide = el("div", "axis-slide");
-    const slider = el("input", "axis-slider");
-    slider.type = "range";
-    slider.min = 0;
-    slider.max = 1000;
-    slider.step = 1;
-    slider.setAttribute("aria-label", `${AXIS_LETTERS[i]} · ${axis.name}`);
-    slider.addEventListener("input", () => ctx.onMove(i, Number(slider.value) / 1000));
-    const output = el("output", "axis-value");
-    slide.append(el("span", "axis-end-label axis-end-start"), slider, el("span", "axis-end-label axis-end-end"), output);
-
-    const problems = el("ul", "axis-problems");
-    row.append(head, fields, slide, problems);
-    container.append(row);
-  });
-  updateAxisRows(container, ctx);
-}
-
-export function updateAxisRows(container, ctx) {
-  const live = ctx.isLive();
-  const positions = ctx.positions();
+// Errors are listed under the drawing (the chip of the axis is marked too).
+function renderAxisErrors(ctx) {
+  const list = ctx.errorList;
+  if (!list) return;
+  list.innerHTML = "";
   const axes = ctx.axes.slice(0, ctx.axisCount);
-  for (const row of container.querySelectorAll(".axis-row")) {
-    const i = Number(row.dataset.axis);
-    const axis = axes[i];
-    if (!axis) continue;
-    const tag = row.querySelector(".axis-tag");
-    if (document.activeElement !== tag && tag.value !== axis.tag) tag.value = axis.tag;
-    const slider = row.querySelector(".axis-slider");
-    slider.disabled = !live;
-    slider.value = Math.round((positions[i] ?? 0) * 1000);
-    row.querySelector(".axis-end-start").textContent = formatNumber(Number(axis.start));
-    row.querySelector(".axis-end-end").textContent = formatNumber(Number(axis.end));
-    row.querySelector(".axis-value").textContent = live ? formatNumber(valueAt(axis, positions[i] ?? 0)) : "—";
-    const problems = row.querySelector(".axis-problems");
-    problems.innerHTML = "";
+  axes.forEach((axis, i) => {
     for (const problem of validateAxis(axis, axes)) {
-      problems.append(el("li", `axis-problem ${problem.level}`, t(problem.key, problem.params)));
+      if (problem.level !== "error") continue;
+      list.append(el("li", "axis-problem error", `${AXIS_LETTERS[i]} · ${t(problem.key, problem.params)}`));
     }
-    if (axis.preset === "custom" && !problems.children.length) {
-      problems.append(el("li", "axis-problem info", t("axis.info.custom", { tag: axis.tag })));
-    } else if (axis.preset !== "custom" && !problems.children.length) {
-      problems.append(el("li", "axis-problem info", t(`axis.info.${axis.preset}`)));
-    }
-    row.classList.toggle("has-error", validateAxis(axis, axes).some((p) => p.level === "error"));
-  }
+  });
 }
-
-export { positionOf };

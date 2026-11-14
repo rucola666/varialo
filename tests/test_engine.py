@@ -402,6 +402,30 @@ def main():
     assert result["ok"], (result["issues"], result.get("glyphReports"))
     checks += 1
 
+    # 18. Export corners of variable fonts as editable static fonts
+    for vf_path, location, expected_ext in ((upright, {"wght": 900}, ".ttf"), (str(cff2_path), {"wght": 900}, ".otf")):
+        out = tmp / "export.bin"
+        res = json.loads(engine.export_master(json.dumps({
+            "path": vf_path, "location": location, "styleName": "Black", "fileName": "x"}), str(out)))
+        assert res["ok"], res
+        assert res["fileName"].endswith(expected_ext), res["fileName"]
+        static = TTFont(str(out))
+        assert "fvar" not in static and "gvar" not in static
+        assert static["name"].getDebugName(17) == "Black"
+        if expected_ext == ".otf":
+            assert "CFF " in static or "CFF2" in static
+    zip_path = tmp / "corners.zip"
+    res = json.loads(engine.export_folder(json.dumps({"folderName": "Up", "entries": [
+        {"path": upright, "location": {"wght": 100}, "styleName": "Thin"},
+        {"path": upright, "location": {"wght": 900}, "styleName": "Black"}]}), str(zip_path)))
+    assert res["ok"], res
+    import zipfile
+    assert len(zipfile.ZipFile(zip_path).namelist()) == 2
+    # an exported corner can be used again as a master
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "paths": [str(tmp / "export.bin"), otf[1]], "labels": ["A", "B"], "axes": axes_for(1)}), str(tmp / "re.ttf")))
+    checks += 1
+
     print(f"All {checks} engine checks passed.")
 
 

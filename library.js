@@ -3,7 +3,7 @@
 // the min/max values of up to three of their axes).
 
 import { el, formatNumber, variationCss } from "./dom.js";
-import { readFontInfo } from "./fontinfo.js";
+import { pickLetter, readFontInfo } from "./fontinfo.js";
 import { t } from "./i18n.js";
 
 export const MAX_UNPACKED_AXES = 3;
@@ -131,7 +131,7 @@ export function folderNotes(item) {
 }
 
 // ---------------------------------------------------------------------------
-// Rendering
+// Rendering: icon tiles to drag onto the vertices
 // ---------------------------------------------------------------------------
 
 function sameRef(a, b) {
@@ -144,65 +144,95 @@ function details(info) {
     .join(" · ");
 }
 
-function glyphPreview(family, location, className = "lib-glyph") {
-  const glyph = el("span", className, "Aa");
-  if (family) glyph.style.fontFamily = `"${family}", var(--font-display)`;
-  if (location) glyph.style.fontVariationSettings = variationCss(location);
-  return glyph;
-}
-
-function badges(placements) {
-  const box = el("span", "lib-badges");
-  for (const letter of placements) box.append(el("span", "lib-badge", letter));
-  return box;
-}
-
 function dragData(event, payload) {
   event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(payload));
   event.dataTransfer.setData("text/plain", payload.folder ? "folder" : "font");
   event.dataTransfer.effectAllowed = "copy";
 }
 
-export function renderLibrary(container, library, { selected, placementsOf, onSelect, onRemove, onToggle, onAxesChange }) {
+function actionButton(symbol, titleKey, handler) {
+  const button = el("button", "tile-action", symbol);
+  button.type = "button";
+  button.title = t(titleKey);
+  button.setAttribute("aria-label", t(titleKey));
+  button.draggable = false;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    handler();
+  });
+  return button;
+}
+
+function tile({ ref, family, location, letter, label, title, placements, selected, actions, onSelect }) {
+  const node = el("div", "lib-tile");
+  node.draggable = true;
+  node.tabIndex = 0;
+  node.setAttribute("role", "button");
+  node.setAttribute("aria-pressed", String(selected));
+  node.classList.toggle("is-selected", selected);
+  node.title = `${title}\n${t("library.dragHint")}`;
+  const glyph = el("span", "tile-glyph", letter);
+  if (family) glyph.style.fontFamily = `"${family}", var(--font-display)`;
+  if (location) glyph.style.fontVariationSettings = variationCss(location);
+  const caption = el("span", "tile-label", label);
+  const badges = el("span", "tile-badges");
+  for (const letterKey of placements) badges.append(el("span", "lib-badge", letterKey));
+  const tools = el("span", "tile-actions");
+  tools.append(...actions);
+  node.append(glyph, caption, badges, tools);
+  node.addEventListener("click", () => onSelect(ref));
+  node.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(ref);
+    }
+  });
+  node.addEventListener("dragstart", (event) => dragData(event, ref));
+  return node;
+}
+
+export function renderLibrary(
+  container,
+  library,
+  { selected, placementsOf, onSelect, onRemove, onToggle, onAxesChange, onDownload, onDownloadFolder },
+) {
   container.innerHTML = "";
   if (!library.length) {
     container.append(el("p", "library-empty", t("library.empty")));
     return;
   }
-  const list = el("ul", "library-list");
+  let looseGrid = null;
   for (const item of library) {
+    const letter = pickLetter([item.info]);
     if (item.kind === "static") {
+      if (!looseGrid) {
+        looseGrid = el("div", "tile-grid");
+        container.append(looseGrid);
+      }
       const ref = { item: item.id, child: null };
-      const row = el("li", "lib-item");
-      row.draggable = true;
-      row.tabIndex = 0;
-      row.classList.toggle("is-selected", sameRef(selected, ref));
-      row.setAttribute("aria-pressed", String(sameRef(selected, ref)));
-      row.title = t("library.dragHint");
-      const text = el("span", "lib-text");
-      text.append(el("strong", "", itemName(item)), el("small", "", `${item.file.name} · ${details(item.info)}`));
-      const remove = el("button", "lib-remove", "×");
-      remove.type = "button";
-      remove.title = t("library.remove");
-      remove.addEventListener("click", (event) => {
-        event.stopPropagation();
-        onRemove(item.id);
-      });
-      row.append(glyphPreview(item.family, null), text, badges(placementsOf(ref)), remove);
-      row.addEventListener("click", () => onSelect(ref));
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect(ref);
-        }
-      });
-      row.addEventListener("dragstart", (event) => dragData(event, ref));
-      list.append(row);
+      looseGrid.append(
+        tile({
+          ref,
+          family: item.family,
+          location: null,
+          letter,
+          label: item.info.styleName || item.file.name,
+          title: `${itemName(item)}\n${item.file.name} · ${details(item.info)}`,
+          placements: placementsOf(ref),
+          selected: sameRef(selected, ref),
+          actions: [
+            actionButton("↓", "library.download", () => onDownload(ref)),
+            actionButton("×", "library.remove", () => onRemove(item.id)),
+          ],
+          onSelect,
+        }),
+      );
       continue;
     }
+    looseGrid = null;
 
-    // Variable font: folder
-    const folder = el("li", "lib-folder");
+    // Variable font: a folder of corner tiles
+    const folder = el("section", "lib-folder");
     folder.classList.toggle("is-open", item.open);
     const head = el("div", "lib-folder-head");
     head.draggable = true;
@@ -213,19 +243,18 @@ export function renderLibrary(container, library, { selected, placementsOf, onSe
     toggle.setAttribute("aria-expanded", String(item.open));
     toggle.title = t(item.open ? "library.collapse" : "library.expand");
     toggle.addEventListener("click", () => onToggle(item.id));
+    const glyph = el("span", "folder-glyph", letter);
+    if (item.family) glyph.style.fontFamily = `"${item.family}", var(--font-display)`;
     const text = el("span", "lib-text");
     const axesText = item.info.axes.map((axis) => `${axis.tag} ${formatNumber(axis.min)}–${formatNumber(axis.max)}`).join(" · ");
-    const count = corners(item).length;
-    text.append(
-      el("strong", "", itemName(item)),
-      el("small", "", `${t("library.variable")} · ${axesText}`),
-      el("small", "", `${item.file.name} · ${details(item.info)} · ${t("library.cornerCount", { count })}`),
+    text.append(el("strong", "", itemName(item)), el("small", "", axesText));
+    text.title = `${item.file.name} · ${details(item.info)} · ${t("library.cornerCount", { count: corners(item).length })}`;
+    const tools = el("span", "folder-actions");
+    tools.append(
+      actionButton("↓", "library.downloadFolder", () => onDownloadFolder(item.id)),
+      actionButton("×", "library.remove", () => onRemove(item.id)),
     );
-    const remove = el("button", "lib-remove", "×");
-    remove.type = "button";
-    remove.title = t("library.remove");
-    remove.addEventListener("click", () => onRemove(item.id));
-    head.append(toggle, glyphPreview(item.family, item.pinned), text, remove);
+    head.append(toggle, glyph, text, tools);
     folder.append(head);
 
     if (item.open) {
@@ -236,34 +265,28 @@ export function renderLibrary(container, library, { selected, placementsOf, onSe
         for (const note of notes) box.append(el("li", "", note));
         folder.append(box);
       }
-      const children = el("ol", "lib-children");
+      const grid = el("div", "tile-grid");
       for (const corner of corners(item)) {
         const ref = { item: item.id, child: corner.index };
-        const row = el("li", "lib-item lib-child");
-        row.draggable = true;
-        row.tabIndex = 0;
-        row.classList.toggle("is-selected", sameRef(selected, ref));
-        row.setAttribute("aria-pressed", String(sameRef(selected, ref)));
-        row.title = t("library.dragHint");
-        const childText = el("span", "lib-text");
-        childText.append(el("strong", "", corner.namedInstance || corner.label));
-        if (corner.namedInstance) childText.append(el("small", "", corner.label));
-        row.append(el("span", "lib-index", String(corner.index + 1)), glyphPreview(item.family, corner.location), childText, badges(placementsOf(ref)));
-        row.addEventListener("click", () => onSelect(ref));
-        row.addEventListener("keydown", (event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onSelect(ref);
-          }
-        });
-        row.addEventListener("dragstart", (event) => dragData(event, ref));
-        children.append(row);
+        grid.append(
+          tile({
+            ref,
+            family: item.family,
+            location: corner.location,
+            letter,
+            label: corner.namedInstance || corner.label,
+            title: `${itemName(item)} · ${corner.namedInstance ? `${corner.namedInstance} · ` : ""}${corner.label}`,
+            placements: placementsOf(ref),
+            selected: sameRef(selected, ref),
+            actions: [actionButton("↓", "library.download", () => onDownload(ref))],
+            onSelect,
+          }),
+        );
       }
-      folder.append(children);
+      folder.append(grid);
     }
-    list.append(folder);
+    container.append(folder);
   }
-  container.append(list);
 }
 
 function axisPicker(item, onAxesChange) {

@@ -7,7 +7,7 @@ const STRINGS = {
   it: {
     "meta.description":
       "Carica i font statici sui vertici dello spazio di design e genera un font variabile direttamente nel browser.",
-    "hero.tagline": "Trasforma font compatibili in un unico font variabile.",
+    "hero.tagline": "Varialo trasforma font compatibili in un unico font.",
     "hero.about": "About",
     "hero.aboutText1": "Un font variabile contiene più disegni (master) dello stesso carattere e permette di passare dall'uno all'altro in modo continuo. Ogni master sta su un vertice dello spazio di design: una linea per un asse, un quadrato per due, un cubo per tre. Puoi partire da font statici o da font variabili: questi ultimi vengono “spacchettati” nei loro angoli.",
     "hero.aboutText2":
@@ -37,7 +37,7 @@ const STRINGS = {
     "library.noteDefault": "Il font di default ({tag} {value}) non è un angolo: spacchettando solo gli estremi questo disegno intermedio si perde.",
     "library.notePinned": "Assi fissi: {list}.",
     "library.unreadable": "“{name}” non può essere letto come font.",
-    "axis.title": "Assi",
+    "axis.title": "Asse",
     "axis.preset": "Tipo di asse",
     "axis.custom": "Personalizzato",
     "axis.tag": "Tag",
@@ -69,6 +69,13 @@ const STRINGS = {
     "info.originVariable": "variabile · {location}",
     "msg.vf_intermediate": "{font} ha master intermedi: spacchettando solo gli estremi, il nuovo font interpolerà in modo lineare tra gli angoli e i disegni intermedi si perdono.",
     "msg.vf_avar": "{font} usa una curva di interpolazione non lineare (avar): nel nuovo font l'interpolazione tra gli angoli sarà lineare.",
+    "library.download": "Scarica come font statico",
+    "library.downloadFolder": "Scarica tutti gli angoli come font statici (.zip)",
+    "axis.edit": "Clicca per scegliere il tipo di asse, il tag e il nome",
+    "axis.close": "Chiudi",
+    "status.exporting": "Preparo il font statico…",
+    "status.exported": "Scaricato: {name}.",
+    "status.exportFailed": "Non è stato possibile esportare il font: {error}",
     "lang.label": "Lingua",
 
     "steps.1": "Importa i font nella libreria",
@@ -81,7 +88,7 @@ const STRINGS = {
     "space.axis2": "2 assi",
     "space.axis3": "3 assi",
     "space.fonts": "{count} font",
-    "space.hint": "Trascina i font della libreria sui vertici (o selezionane uno e clicca un vertice). Una cartella di un font variabile riempie tutti i vertici in una volta. Il vertice A è il font di partenza.",
+    "space.hint": "Trascina le icone della libreria sui vertici (o clicca un'icona e poi un vertice): una cartella riempie tutti i vertici. Scrivi i valori agli estremi degli assi e clicca il nome di un asse per rinominarlo. Dopo la generazione trascina le maniglie gialle.",
     "space.clear": "Svuota vertici",
     "space.familyName": "Nome del font variabile",
     "space.familyPlaceholder": "Automatico: nome del font A + “Variable”",
@@ -219,7 +226,7 @@ const STRINGS = {
   en: {
     "meta.description":
       "Load static fonts onto the vertices of a design space and generate a variable font right in the browser.",
-    "hero.tagline": "Turn compatible fonts into one variable font.",
+    "hero.tagline": "Varialo turns compatible fonts into a single font.",
     "hero.about": "About",
     "hero.aboutText1": "A variable font contains several drawings (masters) of the same typeface and lets you move smoothly between them. Each master sits on a vertex of the design space: a line for one axis, a square for two, a cube for three. You can start from static fonts or from variable fonts: those get “unpacked” into their corners.",
     "hero.aboutText2":
@@ -249,7 +256,7 @@ const STRINGS = {
     "library.noteDefault": "The default font ({tag} {value}) is not a corner: unpacking only the extremes loses this intermediate design.",
     "library.notePinned": "Fixed axes: {list}.",
     "library.unreadable": "“{name}” cannot be read as a font.",
-    "axis.title": "Axes",
+    "axis.title": "Axis",
     "axis.preset": "Axis type",
     "axis.custom": "Custom",
     "axis.tag": "Tag",
@@ -281,6 +288,13 @@ const STRINGS = {
     "info.originVariable": "variable · {location}",
     "msg.vf_intermediate": "{font} has intermediate masters: unpacking only the extremes, the new font interpolates linearly between the corners and the intermediate designs are lost.",
     "msg.vf_avar": "{font} uses a non-linear interpolation curve (avar): in the new font interpolation between the corners will be linear.",
+    "library.download": "Download as a static font",
+    "library.downloadFolder": "Download every corner as static fonts (.zip)",
+    "axis.edit": "Click to choose the axis type, tag and name",
+    "axis.close": "Close",
+    "status.exporting": "Preparing the static font…",
+    "status.exported": "Downloaded: {name}.",
+    "status.exportFailed": "The font could not be exported: {error}",
     "lang.label": "Language",
 
     "steps.1": "Import fonts into the library",
@@ -293,7 +307,7 @@ const STRINGS = {
     "space.axis2": "2 axes",
     "space.axis3": "3 axes",
     "space.fonts": "{count} fonts",
-    "space.hint": "Drag fonts from the library onto the vertices (or select one and click a vertex). A variable font folder fills every vertex at once. Vertex A is the starting font.",
+    "space.hint": "Drag the library icons onto the vertices (or click an icon, then a vertex): a folder fills every vertex. Type the values at the ends of the axes and click an axis name to rename it. After building, drag the yellow handles.",
     "space.clear": "Clear vertices",
     "space.familyName": "Variable font name",
     "space.familyPlaceholder": "Automatic: name of font A + “Variable”",

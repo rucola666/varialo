@@ -13,26 +13,30 @@ Sabotaggio Tipografico workshop by Edoardo Pensieri at IED Torino.
 
 ## What it does
 
-- **Library** (left): import `.ttf` / `.otf` fonts, static or variable.
-  Variable fonts are unpacked into ordered folders with one item per corner
-  (min/max of each axis, up to 3 axes; with more axes you choose which ones and
-  fix the others). Each item has a live preview.
-- **Design space** (right): 1, 2 or 3 axes (line, square, cube). Drag fonts or a
-  whole folder onto the vertices, or click a font and then a vertex.
-- **Axes**: under the diagram each axis gets a tag, a name and the values at the
-  start (vertex A, the default) and at the end. Presets for the registered axes
-  (`wght`, `wdth`, `ital`, `slnt`, `opsz`) or custom axes (UPPERCASE tag,
-  default 1–1000). Axes taken from a variable font are suggested automatically.
-  Invalid tags/ranges are blocked with an explanation.
-- After building, every axis is a slider: on the diagram (handles next to the
-  edges, a point moving inside the line / square / cube, draggable in the square)
-  and in the axis rows. Renaming an axis rebuilds the font automatically.
-- Always exports a **TrueType variable font (`.ttf`)**. `.otf` (CFF / CFF2)
+- **Library** (left): import `.ttf` / `.otf` fonts, static or variable, shown as
+  icon tiles with a big letter. Variable fonts are unpacked into folders of
+  corner tiles (min/max of each axis, up to 3 axes; with more axes you choose
+  which ones and fix the others). Every tile can be downloaded as a **static
+  font** (corners of variable fonts are cut out; CFF2 corners become classic
+  CFF `.otf`), and a whole folder as a `.zip`, so single masters can be edited.
+- **Design space** (right): 1, 2 or 3 axes (line, square, cube). Drag tiles or a
+  whole folder onto the vertices, or click a tile and then a vertex. Vertices
+  show only the letter (no frames).
+- **Axes are edited on the drawing**: type the values at the two ends of each
+  track; click the axis chip to choose the type (registered `wght`, `wdth`,
+  `ital`, `slnt`, `opsz` or custom), tag and name. Axes coming from a variable
+  font are suggested automatically. Invalid tags/ranges are blocked.
+- After building, the yellow handles move along the tracks (same length as the
+  edges; in the cube Z runs outside, next to D–H). A letter of the variable font
+  shows the current point, with dashed guides from every handle; in the square
+  you can drag anywhere. Renaming an axis rebuilds the font automatically.
+- The **VARIALO** wordmark is set in the fonts you load (the variable font once
+  built, following the sliders). The letter shown everywhere is "V", or the
+  first glyph available from "a".
+- Always exports a **TrueType variable font (`.ttf`)**; `.otf` (CFF / CFF2)
   sources are converted to quadratic curves for all masters together.
-- Visual compatibility report with the problem nodes highlighted, plus notes
-  when an unpacked variable font had intermediate masters or an `avar` curve.
-- Font info (name and author of the exported font, details of every vertex),
-  live preview and clickable interpolation matrix.
+- Visual compatibility report: at the bottom of the page, or right under the
+  design space when the font cannot be built.
 
 ### Axis naming: what was tested
 
@@ -77,8 +81,8 @@ GitHub to serve the files as they are.
 | `index.html` | Page structure |
 | `styles.css` | Layout and colours (warm grey, black, warm yellow) |
 | `app.js` | State, build, preview, matrix, font info, wiring |
-| `library.js` | Library: import, unpacking variable fonts into corners |
-| `space.js` | Design space diagram, slider tracks, point, axis rows |
+| `library.js` | Library: import, icon tiles, unpacking variable fonts into corners |
+| `space.js` | Design space: vertices, slider tracks, point, axis editing |
 | `axes.js` | Axis presets and validation rules |
 | `report.js` | Visual compatibility report |
 | `dom.js` | Small DOM helpers |

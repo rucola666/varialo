@@ -2655,3 +2655,18 @@ svg .space-point {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* "Svuota vertici": a yellow button */
+.head-button {
+  padding: 6px 12px;
+  border: var(--line);
+  background: var(--yellow);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.head-button:hover {
+  background: var(--ink);
+  color: var(--yellow);
+}

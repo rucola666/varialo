@@ -535,18 +535,22 @@ export function updateSpace(container, ctx) {
     if (live) chip.append(el("span", "chip-value", formatNumber(valueAt(axis, positions[i] ?? 0))));
   });
 
-  const point = container.querySelector(".space-point");
-  placeAt(point, container, [px, py]);
-  // Size in pixels (not in container units): some browsers skip variations
-  // on text sized with container query units.
+  // The point is rebuilt on every change, styled exactly like the preview
+  // under the library: a new element is always drawn from scratch, so no
+  // browser can keep showing an old version of the glyph.
+  const old = container.querySelector(".space-point");
+  const point = el("span", "space-point");
+  point.setAttribute("aria-hidden", "true");
+  const [left, top] = percent(container, [px, py]);
+  point.style.left = left;
+  point.style.top = top;
   point.style.fontSize = `${container.clientWidth * (ctx.axisCount === 3 ? 0.1 : 0.155) * 1.05}px`;
   if (live && ctx.pointFont) {
     point.style.fontFamily = `"${ctx.pointFont.family}", var(--font-display)`;
     applyLocation(point, ctx.pointFont.location);
   }
-  // A fresh text node makes every browser redraw the glyph with the new
-  // variation (some engines skip the repaint when only the variation changes).
-  point.replaceChildren(document.createTextNode(ctx.variableLetter));
+  point.append(el("span", "space-point-glyph", ctx.variableLetter));
+  old.replaceWith(point);
 
   for (const vertex of container.querySelectorAll(".vertex")) {
     const key = vertex.dataset.key;

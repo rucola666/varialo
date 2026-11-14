@@ -2485,3 +2485,25 @@ input[type="range"]::-moz-range-thumb {
   stroke: var(--figure);
   stroke-width: 1.5;
 }
+
+/* The moving letter is centred on its point without a CSS transform:
+   a zero-size box whose content overflows evenly on every side. */
+.space-point {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  height: 0;
+  transform: none;
+  overflow: visible;
+}
+
+.space-point[data-anchor] {
+  transform: none;
+}
+
+.space-point-glyph {
+  flex: none;
+  line-height: 1;
+  white-space: nowrap;
+}

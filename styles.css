@@ -2507,3 +2507,151 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1;
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ */
+/* Round 6                                                             */
+/* ------------------------------------------------------------------ */
+
+/* Library + preview on the left (one column more), design space on the right */
+.top-row {
+  grid-template-columns: minmax(300px, 4fr) minmax(0, 8fr);
+}
+
+.left-col {
+  display: grid;
+  gap: var(--gutter);
+  align-content: start;
+  min-width: 0;
+}
+
+.bottom-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The point inside the figure: a black circle like the handles */
+svg .space-point {
+  visibility: hidden;
+  fill: var(--ink);
+  stroke: none;
+  pointer-events: none;
+}
+
+.design-space.is-live svg .space-point {
+  visibility: visible;
+}
+
+/* Matrices always on two columns */
+.tile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lib-tile {
+  aspect-ratio: 1 / 0.9;
+}
+
+.tile-glyph {
+  font-size: 3.2rem;
+}
+
+/* A folder is a box that contains its matrices */
+.lib-folder {
+  margin-bottom: 12px;
+  padding: 0 10px 10px;
+  border: var(--line);
+  background: var(--paper);
+}
+
+.lib-folder .lib-folder-head {
+  margin: 0 -10px 10px;
+  border: 0;
+  border-bottom: var(--line);
+  background: #fff;
+}
+
+.lib-folder:not(.is-open) {
+  padding-bottom: 0;
+}
+
+.lib-folder:not(.is-open) .lib-folder-head {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+.lib-folder .tile-grid {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lib-folder .lib-notes,
+.lib-folder .lib-axis-picker {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--paper-dark);
+  background: var(--paper-light);
+}
+
+.library {
+  max-height: 62vh;
+}
+
+/* Preview: one panel under the library */
+.preview-modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: var(--line);
+}
+
+.mode-button {
+  padding: 8px 6px;
+  border: 0;
+  background: var(--paper-light);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mode-button + .mode-button {
+  border-left: var(--line);
+}
+
+.mode-button:hover {
+  background: var(--yellow-soft);
+}
+
+.mode-button[aria-pressed="true"] {
+  background: var(--yellow);
+  font-weight: 700;
+}
+
+.preview-panel .preview-stage {
+  min-height: 140px;
+  padding: 16px 18px;
+  font-size: 64px;
+}
+
+.preview-panel .preview-stage.is-pangram {
+  line-height: 1.25;
+}
+
+.preview-panel .preview-stage.is-empty {
+  color: var(--paper-dark);
+}
+
+.preview-panel .size-control input {
+  width: 90px;
+}
+
+.preview-panel .instance-grid {
+  max-width: none;
+}
+
+.preview-panel .instance-cell {
+  font-size: clamp(1.4rem, 2.4vw, 2.4rem);
+}
+
+@media (max-width: 980px) {
+  .top-row,
+  .bottom-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

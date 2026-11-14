@@ -27,6 +27,8 @@ const state = {
   previewUrl: null,
   fsPaths: {}, // library item id -> path in the Pyodide file system
   letters: { matrix: "M", variable: "V" }, // M for masters, V for the variable font
+  previewMode: "word", // letter | word | pangram
+  previewEdited: false, // the student typed their own text
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,8 +37,7 @@ const dom = {
   libraryPanel: $("#library-panel"),
   importInput: $("#import-input"),
   importButton: $("#import-button"),
-  libPreview: $("#lib-preview"),
-  libPreviewLabel: $("#lib-preview-label"),
+  modeButtons: Array.from(document.querySelectorAll(".mode-button")),
   designSpace: $("#design-space"),
   axisErrors: $("#axis-errors"),
   wordmark: $(".wordmark"),
@@ -89,6 +90,7 @@ function updateLetter() {
     .filter(Boolean);
   const infos = placed.length ? placed : state.library.map((item) => item.info);
   state.letters = pickLetters(infos);
+  refreshPreviewText();
 }
 
 // The VARIALO wordmark is set in the fonts being worked on: the variable font
@@ -264,44 +266,59 @@ function clickVertex(key) {
   }
 }
 
-// Small preview under the library: the clicked font (a matrix, or a variable
-// font folder), or the generated variable font once it exists.
-function renderMiniPreview() {
-  const stage = dom.libPreview;
-  let family = null;
-  let location = null;
-  let label = "";
+// The preview (under the library) shows the clicked font of the library
+// (a matrix, or a variable font folder), or the generated variable font once
+// it exists, following the sliders.
+function previewSource() {
   if (isLive()) {
-    family = state.previewFace.family;
-    location = locationAt();
-    label = `${t("library.previewGenerated")} · ${Object.entries(location)
-      .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
-      .join(" · ")}`;
-  } else {
-    let ref = state.selected;
-    if (ref && !state.library.some((item) => item.id === ref.item)) ref = null;
-    if (!ref && state.library.length) {
-      const first = state.library[0];
-      ref = first.kind === "variable" ? { item: first.id, child: null, folder: true } : { item: first.id, child: null };
-    }
-    const item = ref && state.library.find((entry) => entry.id === ref.item);
-    if (item && item.kind === "variable" && (ref.folder || ref.child === null)) {
-      family = item.family;
-      location = item.pinned;
-      label = `${itemName(item)} · ${t("library.variable")}`;
-    } else if (ref) {
-      const source = resolve(state.library, ref);
-      if (source) {
-        family = source.family;
-        location = source.location;
-        label = source.label;
-      }
-    }
+    const location = locationAt();
+    return {
+      family: state.previewFace.family,
+      location,
+      label: `${t("library.previewGenerated")} · ${Object.entries(location)
+        .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
+        .join(" · ")}`,
+    };
   }
-  stage.style.fontFamily = family ? `"${family}", var(--font-display)` : "";
-  applyLocation(stage, location);
-  stage.classList.toggle("is-empty", !family);
-  dom.libPreviewLabel.textContent = label || t("library.previewEmpty");
+  let ref = state.selected;
+  if (ref && !state.library.some((item) => item.id === ref.item)) ref = null;
+  if (!ref && state.library.length) {
+    const first = state.library[0];
+    ref = first.kind === "variable" ? { item: first.id, child: null, folder: true } : { item: first.id, child: null };
+  }
+  const item = ref && state.library.find((entry) => entry.id === ref.item);
+  if (item && item.kind === "variable" && (ref.folder || ref.child === null)) {
+    return { family: item.family, location: item.pinned, label: `${itemName(item)} · ${t("library.variable")}` };
+  }
+  const source = ref ? resolve(state.library, ref) : null;
+  if (source) return { family: source.family, location: source.location, label: source.label };
+  return null;
+}
+
+function renderMiniPreview() {
+  applyPreview();
+}
+
+const PREVIEW_SIZES = { letter: 200, word: 72, pangram: 30 };
+
+function previewText(mode) {
+  if (mode === "letter") return isLive() ? state.letters.variable : state.letters.matrix;
+  return t(mode === "word" ? "preview.word" : "preview.pangram");
+}
+
+function setPreviewMode(mode, { keepSize = false } = {}) {
+  state.previewMode = mode;
+  state.previewEdited = false;
+  dom.previewStage.textContent = previewText(mode);
+  if (!keepSize) dom.sizeSlider.value = PREVIEW_SIZES[mode];
+  dom.modeButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));
+  dom.previewStage.classList.toggle("is-pangram", mode === "pangram");
+  applyPreview();
+}
+
+// Keep the sample text in sync (language, letter) unless the student typed.
+function refreshPreviewText() {
+  if (!state.previewEdited) dom.previewStage.textContent = previewText(state.previewMode);
 }
 
 function placementsChanged() {
@@ -675,7 +692,7 @@ async function loadPreviewFont(bytes) {
   document.fonts.add(face);
   state.previewFace = face;
   state.previewUrl = null;
-  if (!dom.previewStage.textContent.trim()) dom.previewStage.textContent = t("preview.sample");
+  refreshPreviewText();
   applyPreview();
 }
 
@@ -705,15 +722,11 @@ function locationAt(positions = state.positions) {
 
 function applyPreview() {
   dom.previewStage.style.fontSize = `${dom.sizeSlider.value}px`;
-  dom.previewValues.textContent = "";
-  if (!isLive()) return;
-  const location = locationAt();
-  dom.previewStage.style.fontFamily = `"${state.previewFace.family}", var(--font-display)`;
-  applyLocation(dom.previewStage, location);
-  dom.previewValues.textContent = Object.entries(location)
-    .map(([tag, value]) => `"${tag}" ${formatNumber(value)}`)
-    .join(", ");
-  renderPreviewPlaceholder();
+  const source = previewSource();
+  dom.previewStage.style.fontFamily = source?.family ? `"${source.family}", var(--font-display)` : "";
+  applyLocation(dom.previewStage, source?.location ?? null);
+  dom.previewStage.classList.toggle("is-empty", !source?.family);
+  dom.previewValues.textContent = source ? source.label : t("library.previewEmpty");
 }
 
 const STEPS = [0, 0.25, 0.5, 0.75, 1];
@@ -864,6 +877,7 @@ function clearResults() {
   applyPreview();
   renderReport(dom.reportPanel, dom.report, null, slotLabel);
   renderHeader();
+  refreshPreviewText();
   renderMiniPreview();
 }
 
@@ -886,6 +900,8 @@ function renderLanguage() {
   drawLibrary();
   renderSpace(dom.designSpace, spaceContext());
   renderPreviewPlaceholder();
+  refreshPreviewText();
+  applyPreview();
   renderFontInfo();
   renderReport(dom.reportPanel, dom.report, state.result, slotLabel);
   renderMatrix();
@@ -927,6 +943,12 @@ dom.buildButton.addEventListener("click", () => void handleBuild());
 dom.downloadButton.addEventListener("click", handleDownload);
 dom.clearButton.addEventListener("click", clearVertices);
 dom.sizeSlider.addEventListener("input", applyPreview);
+for (const button of dom.modeButtons) {
+  button.addEventListener("click", () => setPreviewMode(button.dataset.mode));
+}
+dom.previewStage.addEventListener("input", () => {
+  state.previewEdited = true;
+});
 dom.familyName.addEventListener("input", () => {
   state.exportEdited.family = dom.familyName.value.trim() !== "";
   if (state.build) scheduleRebuild();
@@ -937,11 +959,12 @@ dom.designer.addEventListener("input", () => {
 });
 
 setLanguage(initialLanguage());
+dom.modeButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === state.previewMode)));
 state.axisCount = Number(dom.axisRadios.find((radio) => radio.checked)?.value ?? 1);
 clearResults();
 renderLanguage();
 updateIdleStatus();
-applyPreview();
+setPreviewMode(state.previewMode);
 
 // Exposed for testing in the browser console.
 window.varialo = { state, importFiles, dropRef, place, fillFromFolder, handleBuild, updateLive };

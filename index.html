@@ -50,6 +50,7 @@
 
     <main class="workspace">
       <div class="work-row top-row">
+        <div class="left-col">
         <section id="library-panel" class="panel library-panel" aria-labelledby="library-title">
           <div class="panel-head">
             <h2 id="library-title" data-i18n="library.title"></h2>
@@ -58,11 +59,29 @@
           </div>
           <div id="library" class="library"></div>
           <p class="library-hint" data-i18n="library.hint"></p>
-          <div class="lib-preview">
-            <p id="lib-preview-label" class="lib-preview-label"></p>
-            <div id="lib-preview" class="lib-preview-stage" contenteditable="true" spellcheck="false">Varialo</div>
+        </section>
+        <section class="panel preview-panel" aria-labelledby="preview-title">
+          <div class="panel-head">
+            <h2 id="preview-title" data-i18n="preview.title"></h2>
+            <label class="size-control">
+              <span data-i18n="preview.size"></span>
+              <input id="size-slider" type="range" min="12" max="240" value="64" />
+            </label>
+          </div>
+          <div class="preview-modes" role="group" data-i18n-aria="preview.modes">
+            <button type="button" class="mode-button" data-mode="letter" data-i18n="preview.modeLetter"></button>
+            <button type="button" class="mode-button" data-mode="word" data-i18n="preview.modeWord"></button>
+            <button type="button" class="mode-button" data-mode="pangram" data-i18n="preview.modePangram"></button>
+          </div>
+          <div id="preview-stage" class="preview-stage" contenteditable="true" spellcheck="false"></div>
+          <p id="preview-values" class="preview-values"></p>
+          <div id="matrix-block" class="matrix-block" hidden>
+            <h3 data-i18n="preview.matrix"></h3>
+            <p id="matrix-note" class="matrix-note"></p>
+            <div id="instance-grid" class="instance-grid"></div>
           </div>
         </section>
+        </div>
 
         <section class="panel space-panel" aria-labelledby="space-title">
           <div class="panel-head">
@@ -145,22 +164,6 @@
           </details>
         </section>
 
-        <section class="panel preview-panel" aria-labelledby="preview-title">
-          <div class="panel-head">
-            <h2 id="preview-title" data-i18n="preview.title"></h2>
-            <label class="size-control">
-              <span data-i18n="preview.size"></span>
-              <input id="size-slider" type="range" min="24" max="240" value="96" />
-            </label>
-          </div>
-          <div id="preview-stage" class="preview-stage" contenteditable="true" spellcheck="false"></div>
-          <p id="preview-values" class="preview-values"></p>
-          <div id="matrix-block" class="matrix-block" hidden>
-            <h3 data-i18n="preview.matrix"></h3>
-            <p id="matrix-note" class="matrix-note"></p>
-            <div id="instance-grid" class="instance-grid"></div>
-          </div>
-        </section>
       </div>
     </main>
 

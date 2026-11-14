@@ -200,6 +200,8 @@ export function renderSpace(container, ctx) {
       : null;
   const guides = svgEl("g", { class: "guides" }, svg);
   if (geo.count > 1) geo.rulers.forEach((_, i) => svgEl("line", { class: "guide", "data-axis": i }, guides));
+  // The point: a black circle the size of the handles
+  svgEl("circle", { class: "space-point", r: 10 }, svg);
 
   geo.rulers.forEach((ruler, i) => {
     const group = svgEl("g", { class: "ruler", "data-axis": i }, svg);
@@ -262,10 +264,6 @@ export function renderSpace(container, ctx) {
     container.append(vertex);
   }
 
-  // The point: a letter in the variable font
-  const point = el("span", "space-point", "");
-  point.setAttribute("aria-hidden", "true");
-  container.append(point);
 
   // Axis editing, directly on the tracks
   geo.rulers.forEach((ruler, i) => {
@@ -535,22 +533,9 @@ export function updateSpace(container, ctx) {
     if (live) chip.append(el("span", "chip-value", formatNumber(valueAt(axis, positions[i] ?? 0))));
   });
 
-  // The point is rebuilt on every change, styled exactly like the preview
-  // under the library: a new element is always drawn from scratch, so no
-  // browser can keep showing an old version of the glyph.
-  const old = container.querySelector(".space-point");
-  const point = el("span", "space-point");
-  point.setAttribute("aria-hidden", "true");
-  const [left, top] = percent(container, [px, py]);
-  point.style.left = left;
-  point.style.top = top;
-  point.style.fontSize = `${container.clientWidth * (ctx.axisCount === 3 ? 0.1 : 0.155) * 1.05}px`;
-  if (live && ctx.pointFont) {
-    point.style.fontFamily = `"${ctx.pointFont.family}", var(--font-display)`;
-    applyLocation(point, ctx.pointFont.location);
-  }
-  point.append(el("span", "space-point-glyph", ctx.variableLetter));
-  old.replaceWith(point);
+  const point = svg.querySelector(".space-point");
+  point.setAttribute("cx", px);
+  point.setAttribute("cy", py);
 
   for (const vertex of container.querySelectorAll(".vertex")) {
     const key = vertex.dataset.key;

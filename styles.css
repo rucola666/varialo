@@ -2455,3 +2455,13 @@ input[type="range"]::-moz-range-thumb {
 .lib-folder-head.is-selected {
   background: var(--yellow);
 }
+
+/* Matrices and empty vertices: grey frame */
+.vertex-node,
+.vertex-node.filled {
+  border-color: #a8a296;
+}
+
+.vertex-plus {
+  color: #8f897d;
+}

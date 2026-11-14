@@ -41,6 +41,7 @@ const dom = {
   importButton: $("#import-button"),
   modeButtons: Array.from(document.querySelectorAll(".mode-button")),
   previewPanel: $("#preview-panel"),
+  previewSliders: $("#preview-sliders"),
   designSpace: $("#design-space"),
   axisErrors: $("#axis-errors"),
   wordmark: $(".wordmark"),
@@ -281,6 +282,7 @@ function previewSource() {
     return {
       family: state.previewFace.family,
       location,
+      info: resolve(state.library, state.vertices.a)?.info ?? null,
       label: `${t("library.previewGenerated")} · ${Object.entries(location)
         .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
         .join(" · ")}`,
@@ -294,10 +296,10 @@ function previewSource() {
   }
   const item = ref && state.library.find((entry) => entry.id === ref.item);
   if (item && item.kind === "variable" && (ref.folder || ref.child === null)) {
-    return { family: item.family, location: item.pinned, label: `${itemName(item)} · ${t("library.variable")}` };
+    return { family: item.family, location: item.pinned, info: item.info, label: `${itemName(item)} · ${t("library.variable")}` };
   }
   const source = ref ? resolve(state.library, ref) : null;
-  if (source) return { family: source.family, location: source.location, label: source.label };
+  if (source) return { family: source.family, location: source.location, info: source.info, label: source.label };
   return null;
 }
 
@@ -309,7 +311,19 @@ const PREVIEW_SIZES = { letter: 280, word: 140, pangram: 56 };
 
 function previewText(mode) {
   if (mode === "letter") return isLive() ? state.letters.variable : state.letters.matrix;
-  return t(mode === "word" ? "preview.word" : "preview.pangram");
+  return adaptToGlyphs(t(mode === "word" ? "preview.word" : "preview.pangram"), previewSource()?.info);
+}
+
+// Work with the glyphs the font has: a font with capitals only gets the text
+// in capitals (and the other way round).
+function adaptToGlyphs(text, info) {
+  if (!info?.hasChar) return text;
+  const share = (letters) => [...letters].filter((ch) => info.hasChar(ch.codePointAt(0))).length / letters.length;
+  const lower = share("abcdefghijklmnopqrstuvwxyz");
+  const upper = share("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+  if (lower < 0.5 && upper >= 0.5) return text.toLocaleUpperCase(getLanguage());
+  if (upper < 0.5 && lower >= 0.5) return text.toLocaleLowerCase(getLanguage());
+  return text;
 }
 
 function setPreviewMode(mode, { keepSize = false } = {}) {
@@ -783,10 +797,56 @@ function locationAt(positions = state.positions) {
 function applyPreview() {
   dom.previewStage.style.fontSize = `${dom.sizeSlider.value}px`;
   const source = previewSource();
+  if (!state.previewEdited) {
+    const text = previewText(state.previewMode);
+    if (dom.previewStage.textContent !== text) dom.previewStage.textContent = text;
+  }
+  renderPreviewSliders();
   dom.previewStage.style.fontFamily = source?.family ? `"${source.family}", var(--font-display)` : "";
   applyLocation(dom.previewStage, source?.location ?? null);
   dom.previewStage.classList.toggle("is-empty", !source?.family);
   dom.previewValues.textContent = source ? source.label : t("library.previewEmpty");
+}
+
+// One slider per axis in the preview, in sync with the handles of the design
+// space (rows are built once per font, then only their values change).
+function renderPreviewSliders() {
+  const box = dom.previewSliders;
+  if (!isLive()) {
+    box.innerHTML = "";
+    delete box.dataset.key;
+    return;
+  }
+  const axes = state.build.axes;
+  const key = JSON.stringify(axes.map((axis) => [axis.tag, axis.label, axis.start, axis.end]));
+  if (box.dataset.key !== key) {
+    box.innerHTML = "";
+    box.dataset.key = key;
+    axes.forEach((axis, i) => {
+      const row = el("label", "preview-slider");
+      const name = el("span", "preview-slider-name");
+      name.append(el("b", "", AXIS_LETTERS[i]), el("code", "", axis.tag), el("span", "", axis.label));
+      const range = el("input");
+      range.type = "range";
+      range.min = 0;
+      range.max = 1000;
+      range.step = 1;
+      range.dataset.axis = i;
+      range.setAttribute("aria-label", `${AXIS_LETTERS[i]} · ${axis.label}`);
+      range.addEventListener("input", () => {
+        state.positions[i] = Number(range.value) / 1000;
+        updateLive();
+      });
+      const ends = el("span", "preview-slider-ends", `${formatNumber(axis.start)} → ${formatNumber(axis.end)}`);
+      row.append(name, range, el("output", "preview-slider-value"), ends);
+      box.append(row);
+    });
+  }
+  box.querySelectorAll(".preview-slider").forEach((row, i) => {
+    const range = row.querySelector("input");
+    if (document.activeElement !== range) range.value = Math.round((state.positions[i] ?? 0) * 1000);
+    row.querySelector("output").textContent = formatNumber(valueAt(axes[i], state.positions[i] ?? 0));
+  });
 }
 
 const STEPS = [0, 0.25, 0.5, 0.75, 1];

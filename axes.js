@@ -14,7 +14,7 @@ export const AXIS_LETTERS = ["X", "Y", "Z"];
 
 // start = value at vertex A (the default font), end = value at the other end.
 export const PRESETS = {
-  custom: { tag: null, nameKey: null, start: 1, end: 1000 },
+  custom: { tag: null, nameKey: null, start: 0, end: 100 },
   wght: { tag: "wght", name: "Weight", start: 100, end: 900, min: 1, max: 1000 },
   wdth: { tag: "wdth", name: "Width", start: 100, end: 75, min: 1, max: 1000 },
   ital: { tag: "ital", name: "Italic", start: 0, end: 1, min: 0, max: 1 },

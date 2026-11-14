@@ -26,7 +26,6 @@ from fontTools.designspaceLib import (
 )
 from fontTools.pens.basePen import decomposeQuadraticSegment, decomposeSuperBezierSegment
 from fontTools.pens.recordingPen import RecordingPen
-from fontTools.pens.reverseContourPen import ReverseContourPen
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont, newTable
@@ -138,13 +137,10 @@ def _record_glyph(glyph_set, name):
             if points[-1] is not None:
                 current = points[-1]
         elif op in ("closePath", "endPath"):
+            # Recorded exactly as drawn. Never add or drop points depending on
+            # coordinates: two points may coincide in one master (or in one
+            # corner of a variable font) and not in another.
             if contour is not None:
-                start = contour[0][1][0] if contour[0][0] == "moveTo" else None
-                if op == "closePath" and start is not None and current is not None and len(contour) > 1:
-                    if tuple(current) != tuple(start):
-                        # Make the closing segment explicit, so every closed
-                        # contour ends exactly on its start point.
-                        contour.append(("lineTo", [tuple(start)]))
                 contour.append((op, []))
             contour = None
         elif op == "addComponent":
@@ -158,7 +154,7 @@ def _record_font(font):
 
 
 def _contour_points(contour):
-    """Flat list of [x, y, on_curve] for a recorded contour."""
+    """Flat list of [x, y, on_curve] for a recorded contour, as drawn."""
     points = []
     for op, args in contour:
         if op in ("moveTo", "lineTo"):
@@ -172,16 +168,29 @@ def _contour_points(contour):
                 if point is None:
                     continue
                 points.append([point[0], point[1], index == len(args) - 1])
-    # Closed contours end on their start point (see _record_glyph): drop the duplicate.
-    if (
+    return points
+
+
+def _ends_on_start(contour, points):
+    return (
         len(points) > 1
         and contour[0][0] == "moveTo"
         and contour[-1][0] == "closePath"
         and points[-1][0] == points[0][0]
         and points[-1][1] == points[0][1]
-    ):
-        points.pop()
-    return points
+    )
+
+
+def _comparable(contour_a, points_a, contour_b, points_b):
+    """Points of two contours ready to be compared.
+
+    A closed contour whose last segment ends on its start point repeats that
+    point. The repeat is dropped only when it happens in BOTH contours, so a
+    coincidence in one master never changes the count.
+    """
+    if _ends_on_start(contour_a, points_a) and _ends_on_start(contour_b, points_b):
+        return points_a[:-1], points_b[:-1]
+    return points_a, points_b
 
 
 def _segment_signature(contour):
@@ -341,7 +350,7 @@ def _compare_glyph(base, other, cubic):
         pairs = [(i, i) for i in range(len(points_base))]
 
     for ci, cj in pairs:
-        pa, pb = points_base[ci], points_other[cj]
+        pa, pb = _comparable(base.contours[ci], points_base[ci], other.contours[cj], points_other[cj])
         if cubic:
             # PostScript/CFF: what matters is the number of nodes (on-curve
             # points). Line-vs-curve differences are fixed automatically.
@@ -388,6 +397,7 @@ def _compare_glyph_warnings(base, other, cubic):
     box_base = _bbox(points_base)
     box_other = _bbox(points_other)
     for ci, (pa, pb) in enumerate(zip(points_base, points_other)):
+        pa, pb = _comparable(base.contours[ci], pa, other.contours[ci], pb)
         if cubic and _segment_signature(base.contours[ci]) != _segment_signature(other.contours[ci]):
             warnings.append(_msg("line_vs_curve", contour=ci + 1))
             hl_base["contours"].add(ci)
@@ -685,7 +695,9 @@ def _cubic_masters_to_quadratic(fonts, recordings, glyph_order):
     """Convert the cubic outlines of every master into compatible quadratic ones.
 
     Curves are converted with cu2qu across all masters at once, so every master
-    gets the same number of off-curve points. Returns {glyph: [TTGlyph per master]}.
+    gets the same number of off-curve points. Contours are reversed (PostScript
+    and TrueType use opposite directions) by walking the segments backwards,
+    which never depends on coordinates. Returns {glyph: [TTGlyph per master]}.
     """
     upm = fonts[0]["head"].unitsPerEm
     max_err = upm / 1000.0
@@ -693,22 +705,23 @@ def _cubic_masters_to_quadratic(fonts, recordings, glyph_order):
     result = {}
     for name in glyph_order:
         pens = [TTGlyphPen(None) for _ in range(count)]
-        reversers = [ReverseContourPen(pen) for pen in pens]
         glyphs = [recordings[m][name] for m in range(count)]
         for contour_index in range(len(glyphs[0].contours)):
             contours = [g.contours[contour_index] for g in glyphs]
-            current = [None] * count
-            for seg_index in range(len(contours[0])):
+            if contours[0][0][0] != "moveTo":
+                raise ValueError("Unexpected contour in glyph %s" % name)
+            starts = [tuple(c[0][1][0]) for c in contours]
+            current = list(starts)
+            segments = [[] for _ in range(count)]  # per master: (offcurves, end point)
+            closing = None
+            for seg_index in range(1, len(contours[0])):
                 ops = [c[seg_index] for c in contours]
                 kinds = {op for op, _ in ops}
-                if kinds == {"moveTo"}:
+                if kinds == {"lineTo"}:
                     for m in range(count):
-                        reversers[m].moveTo(ops[m][1][0])
-                        current[m] = ops[m][1][0]
-                elif kinds == {"lineTo"}:
-                    for m in range(count):
-                        reversers[m].lineTo(ops[m][1][0])
-                        current[m] = ops[m][1][0]
+                        end = tuple(ops[m][1][0])
+                        segments[m].append(([], end))
+                        current[m] = end
                 elif kinds <= {"lineTo", "curveTo"}:
                     curves = []
                     for m in range(count):
@@ -717,16 +730,41 @@ def _cubic_masters_to_quadratic(fonts, recordings, glyph_order):
                         curves.append([current[m]] + [tuple(p) for p in points])
                     splines = curves_to_quadratic(curves, [max_err] * count)
                     for m in range(count):
-                        reversers[m].qCurveTo(*[tuple(p) for p in splines[m][1:]])
-                        current[m] = splines[m][-1]
-                elif kinds == {"closePath"}:
-                    for m in range(count):
-                        reversers[m].closePath()
-                elif kinds == {"endPath"}:
-                    for m in range(count):
-                        reversers[m].endPath()
+                        spline = [tuple(p) for p in splines[m]]
+                        segments[m].append((spline[1:-1], spline[-1]))
+                        current[m] = spline[-1]
+                elif kinds == {"closePath"} or kinds == {"endPath"}:
+                    closing = ops[0][0]
+                    break
                 else:
                     raise ValueError("Incompatible segments in glyph %s" % name)
+            if closing == "endPath":
+                # Open contours do not exist in TrueType: keep them as drawn.
+                for m in range(count):
+                    pens[m].moveTo(starts[m])
+                    for offs, end in segments[m]:
+                        pens[m].qCurveTo(*offs, end) if offs else pens[m].lineTo(end)
+                    pens[m].endPath()
+                continue
+            # The implicit closing line from the last point back to the start
+            # is skipped only if it has zero length in every master.
+            skip_close = all(
+                (segments[m][-1][1] if segments[m] else starts[m]) == starts[m] for m in range(count)
+            )
+            for m in range(count):
+                pen = pens[m]
+                ends = [starts[m]] + [end for _, end in segments[m]]
+                pen.moveTo(starts[m])
+                if not skip_close:
+                    pen.lineTo(ends[-1])
+                for i in range(len(segments[m]), 0, -1):
+                    offs, _ = segments[m][i - 1]
+                    target = ends[i - 1]
+                    if offs:
+                        pen.qCurveTo(*reversed(offs), target)
+                    else:
+                        pen.lineTo(target)
+                pen.closePath()
         result[name] = [pen.glyph() for pen in pens]
     return result
 

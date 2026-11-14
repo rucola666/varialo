@@ -330,6 +330,78 @@ def main():
     assert len(notes) == 1 and notes[0]["params"]["font"] == "three-masters.ttf", result["warnings"]
     checks += 1
 
+    # 16. CFF -> TrueType keeps the shapes: same area, TrueType direction (clockwise)
+    from fontTools.pens.areaPen import AreaPen
+    out = tmp / "area.ttf"
+    result = build(engine, otf[:2], out)
+    assert result["ok"]
+    source = TTFont(otf[0])
+    converted = instantiateVariableFont(TTFont(str(out)), {"BLNA": 0})
+    for glyph in ("A", "O"):
+        cff_pen, tt_pen = AreaPen(source.getGlyphSet()), AreaPen(converted.getGlyphSet())
+        source.getGlyphSet()[glyph].draw(cff_pen)
+        converted.getGlyphSet()[glyph].draw(tt_pen)
+        assert cff_pen.value > 0 and tt_pen.value < 0, (glyph, cff_pen.value, tt_pen.value)
+        assert abs(abs(tt_pen.value) - cff_pen.value) / cff_pen.value < 0.01, (glyph, cff_pen.value, tt_pen.value)
+    checks += 1
+
+    # 17. Points that coincide in one corner only (e.g. collapsed at Thin) are
+    #     not an incompatibility: corners of one variable font always rebuild.
+    def closing_master(path, closing, cff):
+        builder = FontBuilder(1000, isTTF=not cff)
+        builder.setupGlyphOrder([".notdef", "A"])
+        builder.setupCharacterMap({65: "A"})
+        def draw(pen):
+            pen.moveTo((0, 0))
+            pen.lineTo((300, 0))
+            if cff:
+                pen.curveTo((300, 150), (150, 300), (0, 300))
+            else:
+                pen.qCurveTo((300, 300), (0, 300))
+            pen.lineTo(closing)
+            pen.closePath()
+        if cff:
+            charstrings = {}
+            for name in (".notdef", "A"):
+                pen = T2CharStringPen(500, None)
+                if name == "A":
+                    draw(pen)
+                charstrings[name] = pen.getCharString()
+            builder.setupCFF("T", {}, charstrings, {})
+        else:
+            glyphs = {}
+            for name in (".notdef", "A"):
+                pen = TTGlyphPen(None)
+                if name == "A":
+                    draw(pen)
+                glyphs[name] = pen.glyph()
+            builder.setupGlyf(glyphs)
+        builder.setupHorizontalMetrics({".notdef": (500, 0), "A": (500, 0)})
+        builder.setupHorizontalHeader(ascent=800, descent=-200)
+        builder.setupNameTable({"familyName": "T", "styleName": "R"})
+        builder.setupOS2()
+        builder.setupPost()
+        builder.save(str(path))
+        return str(path)
+
+    ds = DesignSpaceDocument()
+    ds.addAxis(AxisDescriptor(tag="wght", name="wght", minimum=100, default=100, maximum=900))
+    ds.addSource(SourceDescriptor(font=TTFont(closing_master(tmp / "c1.otf", (0, 0), True)), location={"wght": 100}))
+    ds.addSource(SourceDescriptor(font=TTFont(closing_master(tmp / "c2.otf", (0, 40), True)), location={"wght": 900}))
+    collapsed = tmp / "collapsed-cff2.otf"
+    vbuild(ds)[0].save(str(collapsed))
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "sources": [{"path": str(collapsed), "location": {"wght": v}} for v in (100, 900)],
+        "labels": ["A", "B"], "axes": [{"tag": "wght", "name": "Weight", "start": 100, "end": 900}],
+    }), str(tmp / "collapsed.ttf")))
+    assert result["ok"], (result["issues"], result.get("glyphReports"))
+    # same situation with two separate static .otf masters
+    result = json.loads(engine.build_variable_font(json.dumps({
+        "paths": [str(tmp / "c1.otf"), str(tmp / "c2.otf")], "labels": ["A", "B"], "axes": axes_for(1),
+    }), str(tmp / "collapsed-static.ttf")))
+    assert result["ok"], (result["issues"], result.get("glyphReports"))
+    checks += 1
+
     print(f"All {checks} engine checks passed.")
 
 

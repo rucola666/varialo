@@ -555,6 +555,9 @@ async function handleBuild({ silent = false } = {}) {
     state.build = { bytes, axes: result.axes, fileName: `${fileBase || "Varialo-Variable"}.ttf` };
     await loadPreviewFont(bytes);
     dom.downloadButton.disabled = false;
+    // A new font starts in the middle of the space; an automatic rebuild
+    // (after renaming an axis) keeps the current position.
+    if (!silent) state.positions = [0.5, 0.5, 0.5];
     updateLive();
     drawSpace();
     setStatus("success", "status.ready");
@@ -663,13 +666,15 @@ function handleDownload() {
 // ---------------------------------------------------------------------------
 
 async function loadPreviewFont(bytes) {
-  const url = URL.createObjectURL(new Blob([bytes], { type: "font/ttf" }));
-  const face = variableFontFace(`VarialoPreview-${Date.now()}`, `url(${url})`);
+  // Loaded from the bytes (like the library fonts), not from a blob: URL:
+  // Safari applies variations more reliably to fonts created this way.
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const face = variableFontFace(`VarialoPreview-${Date.now()}`, buffer);
   await face.load();
   resetPreviewFont();
   document.fonts.add(face);
   state.previewFace = face;
-  state.previewUrl = url;
+  state.previewUrl = null;
   if (!dom.previewStage.textContent.trim()) dom.previewStage.textContent = t("preview.sample");
   applyPreview();
 }

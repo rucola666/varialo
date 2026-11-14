@@ -392,7 +392,6 @@ code,
 }
 
 .design-space .ruler,
-.design-space .space-point,
 .design-space.is-live .plane {
   pointer-events: auto;
 }
@@ -2464,4 +2463,25 @@ input[type="range"]::-moz-range-thumb {
 
 .vertex-plus {
   color: #8f897d;
+}
+
+/* One grey for the figure, the frames and the projections */
+:root {
+  --figure: #c9c3b8;
+}
+
+.design-space .edge,
+.design-space .edge-back,
+.design-space .edge-axis {
+  stroke: var(--figure);
+}
+
+.vertex-node,
+.vertex-node.filled {
+  border-color: var(--figure);
+}
+
+.guide {
+  stroke: var(--figure);
+  stroke-width: 1.5;
 }

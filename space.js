@@ -242,7 +242,9 @@ export function renderSpace(container, ctx) {
     node.addEventListener("dragend", () => node.classList.remove("is-dragging"));
     node.addEventListener("dragover", (event) => {
       event.preventDefault();
-      event.dataTransfer.dropEffect = [...event.dataTransfer.types].includes(DRAG_TYPE) ? "move" : "copy";
+      // Must match what the dragged element allows: icons from the library
+      // are copied, a font dragged from another vertex is moved.
+      event.dataTransfer.dropEffect = /move/i.test(event.dataTransfer.effectAllowed) ? "move" : "copy";
       node.classList.add("dragover");
     });
     node.addEventListener("dragleave", () => node.classList.remove("dragover"));

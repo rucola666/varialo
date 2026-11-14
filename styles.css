@@ -2670,3 +2670,11 @@ svg .space-point {
   background: var(--ink);
   color: var(--yellow);
 }
+
+/* Same box size in every figure: the size of vertex A in the cube */
+.design-space,
+.design-space[data-axes="1"],
+.design-space[data-axes="2"],
+.design-space[data-axes="3"] {
+  --node: 10cqw;
+}

@@ -413,7 +413,11 @@ def main():
         assert "fvar" not in static and "gvar" not in static
         assert static["name"].getDebugName(17) == "Black"
         if expected_ext == ".otf":
-            assert "CFF " in static or "CFF2" in static
+            assert "CFF " in static and "CFF2" not in static and static.sfntVersion == "OTTO"
+            from fontTools.pens.areaPen import AreaPen
+            pen = AreaPen(static.getGlyphSet())
+            static.getGlyphSet()["A"].draw(pen)
+            assert pen.value > 0
     zip_path = tmp / "corners.zip"
     res = json.loads(engine.export_folder(json.dumps({"folderName": "Up", "entries": [
         {"path": upright, "location": {"wght": 100}, "styleName": "Thin"},

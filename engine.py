@@ -973,25 +973,46 @@ def build_variable_font(request_json, output_path):
 # ---------------------------------------------------------------------------
 
 
+def _cff2_to_cff(font):
+    """Rewrite the outlines of a static CFF2 font as classic CFF, which font
+    editors open. Done by drawing every glyph, so it does not depend on the
+    fontTools version."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.t2CharStringPen import T2CharStringPen
+
+    glyph_set = font.getGlyphSet()
+    charstrings = {}
+    for name in font.getGlyphOrder():
+        glyph = glyph_set[name]
+        pen = T2CharStringPen(glyph.width, glyph_set)
+        glyph.draw(pen)
+        charstrings[name] = pen.getCharString()
+    ps_name = _name(font, 6) or "Varialo"
+    full_name = _name(font, 4) or ps_name
+    del font["CFF2"]
+    builder = FontBuilder(font=font, isTTF=False)
+    builder.setupCFF(ps_name, {"FullName": full_name}, charstrings, {})
+    font.sfntVersion = "OTTO"
+    return font
+
+
 def _static_instance(path, location):
-    """Static font cut out of a variable font. CFF2 is turned back into CFF
-    when this fontTools version can do it, so font editors open it."""
+    """Static font cut out of a variable font (CFF2 becomes classic CFF)."""
     font = TTFont(path)
     full = {}
     for axis in font["fvar"].axes:
         value = location.get(axis.axisTag, axis.defaultValue)
         full[axis.axisTag] = min(max(float(value), axis.minValue), axis.maxValue)
-    static = None
-    if "CFF2" in font:
-        try:
-            static = instancer.instantiateVariableFont(font, full, downgradeCFF2=True)
-        except TypeError:  # older fontTools: keep CFF2
-            static = None
-    if static is None:
-        static = instancer.instantiateVariableFont(font, full)
+    static = instancer.instantiateVariableFont(font, full)
     for table in ("STAT",):
         if table in static:
             del static[table]
+    buffer = BytesIO()
+    static.save(buffer)
+    buffer.seek(0)
+    static = TTFont(buffer)
+    if "CFF2" in static:
+        static = _cff2_to_cff(static)
     return static
 
 

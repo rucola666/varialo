@@ -2,7 +2,7 @@
 // fonts become folders of "corners" (one static instance per combination of
 // the min/max values of up to three of their axes).
 
-import { el, formatNumber, variationCss } from "./dom.js";
+import { applyLocation, el, formatNumber, variableFontFace } from "./dom.js";
 import { pickLetters, readFontInfo } from "./fontinfo.js";
 import { t } from "./i18n.js";
 
@@ -36,7 +36,7 @@ export async function importFile(file) {
   };
   if (item.axesUsed.length === 0 && info.axes.length) item.axesUsed = [info.axes[0].tag];
   try {
-    const face = new FontFace(`Lib-${item.id}`, buffer);
+    const face = item.kind === "variable" ? variableFontFace(`Lib-${item.id}`, buffer) : new FontFace(`Lib-${item.id}`, buffer);
     await face.load();
     document.fonts.add(face);
     item.face = face;
@@ -173,7 +173,7 @@ function tile({ ref, family, location, letter, label, title, placements, selecte
   node.title = `${title}\n${t("library.dragHint")}`;
   const glyph = el("span", "tile-glyph", letter);
   if (family) glyph.style.fontFamily = `"${family}", var(--font-display)`;
-  if (location) glyph.style.fontVariationSettings = variationCss(location);
+  if (location) applyLocation(glyph, location);
   const caption = el("span", "tile-label", label);
   const badges = el("span", "tile-badges");
   for (const letterKey of placements) badges.append(el("span", "lib-badge", letterKey));

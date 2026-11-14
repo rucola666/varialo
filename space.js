@@ -5,7 +5,7 @@
 // with dashed guides coming from each handle.
 
 import { AXIS_LETTERS, PRESETS, validateAxis, valueAt } from "./axes.js";
-import { el, formatNumber, svgEl, variationCss } from "./dom.js";
+import { applyLocation, el, formatNumber, svgEl } from "./dom.js";
 import { DRAG_TYPE } from "./library.js";
 import { t } from "./i18n.js";
 
@@ -537,9 +537,12 @@ export function updateSpace(container, ctx) {
 
   const point = container.querySelector(".space-point");
   placeAt(point, container, [px, py]);
+  // Size in pixels (not in container units): some browsers skip variations
+  // on text sized with container query units.
+  point.style.fontSize = `${container.clientWidth * (ctx.axisCount === 3 ? 0.1 : 0.155) * 1.05}px`;
   if (live && ctx.pointFont) {
     point.style.fontFamily = `"${ctx.pointFont.family}", var(--font-display)`;
-    point.style.fontVariationSettings = ctx.pointFont.variation;
+    applyLocation(point, ctx.pointFont.location);
   }
   // A fresh text node makes every browser redraw the glyph with the new
   // variation (some engines skip the repaint when only the variation changes).
@@ -562,7 +565,7 @@ export function updateSpace(container, ctx) {
       const glyph = el("span", "vertex-glyph", ctx.letter);
       glyph.draggable = false;
       if (source.family) glyph.style.fontFamily = `"${source.family}", var(--font-display)`;
-      if (source.location) glyph.style.fontVariationSettings = variationCss(source.location);
+      if (source.location) applyLocation(glyph, source.location);
       node.append(glyph);
       node.title = `${key.toUpperCase()} · ${source.label}\n${coords}`;
     } else {

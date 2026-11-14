@@ -1,6 +1,6 @@
 import { applyStaticTexts, getLanguage, initialLanguage, setLanguage, t, tm } from "./i18n.js";
 import { AXIS_LETTERS, applyPreset, defaultAxis, presetForTag, PRESETS, tagFromName, validateAxis, valueAt } from "./axes.js";
-import { el, formatNumber, variationCss } from "./dom.js";
+import { applyLocation, el, formatNumber, variableFontFace, variationCss } from "./dom.js";
 import { corners, importFile, itemName, renderLibrary, resolve } from "./library.js";
 import { renderReport } from "./report.js";
 import { renderSpace, updateSpace } from "./space.js";
@@ -97,25 +97,28 @@ function updateLetter() {
 function renderHeader() {
   const word = dom.wordmark;
   let family = null;
-  let variation = "";
+  let location = null;
   if (isLive()) {
     family = state.previewFace.family;
-    variation = variationCss(locationAt());
+    location = locationAt();
   } else {
     const source = resolve(state.library, state.vertices.a) ?? null;
     if (source?.family) {
       family = source.family;
-      variation = variationCss(source.location);
+      location = source.location;
     } else {
       const first = state.library.find((item) => item.family);
       if (first) {
         family = first.family;
-        variation = variationCss(first.kind === "variable" ? first.pinned : null);
+        location = first.kind === "variable" ? first.pinned : null;
       }
     }
   }
   word.style.fontFamily = family ? `"${family}", var(--font-display)` : "";
-  word.style.fontVariationSettings = variation;
+  applyLocation(word, location);
+  // The wordmark is bold in the interface font: with a loaded font, show the
+  // font as it is (no fake bold).
+  if (family && !(location && "wght" in location)) word.style.fontWeight = "400";
   word.classList.toggle("is-custom", Boolean(family));
 }
 
@@ -266,12 +269,11 @@ function clickVertex(key) {
 function renderMiniPreview() {
   const stage = dom.libPreview;
   let family = null;
-  let variation = "";
+  let location = null;
   let label = "";
   if (isLive()) {
     family = state.previewFace.family;
-    const location = locationAt();
-    variation = variationCss(location);
+    location = locationAt();
     label = `${t("library.previewGenerated")} · ${Object.entries(location)
       .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
       .join(" · ")}`;
@@ -285,19 +287,19 @@ function renderMiniPreview() {
     const item = ref && state.library.find((entry) => entry.id === ref.item);
     if (item && item.kind === "variable" && (ref.folder || ref.child === null)) {
       family = item.family;
-      variation = variationCss(item.pinned);
+      location = item.pinned;
       label = `${itemName(item)} · ${t("library.variable")}`;
     } else if (ref) {
       const source = resolve(state.library, ref);
       if (source) {
         family = source.family;
-        variation = variationCss(source.location);
+        location = source.location;
         label = source.label;
       }
     }
   }
   stage.style.fontFamily = family ? `"${family}", var(--font-display)` : "";
-  stage.style.fontVariationSettings = variation;
+  applyLocation(stage, location);
   stage.classList.toggle("is-empty", !family);
   dom.libPreviewLabel.textContent = label || t("library.previewEmpty");
 }
@@ -359,7 +361,7 @@ function spaceContext() {
     letter: state.letters.matrix,
     variableLetter: state.letters.variable,
     refAt: (key) => state.vertices[key] ?? null,
-    pointFont: isLive() ? { family: state.previewFace.family, variation: variationCss(locationAt()) } : null,
+    pointFont: isLive() ? { family: state.previewFace.family, location: locationAt() } : null,
     errorList: dom.axisErrors,
     failing: failingKeys(),
     isLive,
@@ -662,7 +664,7 @@ function handleDownload() {
 
 async function loadPreviewFont(bytes) {
   const url = URL.createObjectURL(new Blob([bytes], { type: "font/ttf" }));
-  const face = new FontFace(`VarialoPreview-${Date.now()}`, `url(${url})`);
+  const face = variableFontFace(`VarialoPreview-${Date.now()}`, `url(${url})`);
   await face.load();
   resetPreviewFont();
   document.fonts.add(face);
@@ -678,7 +680,7 @@ function resetPreviewFont() {
   state.previewFace = null;
   state.previewUrl = null;
   dom.previewStage.style.fontFamily = "";
-  dom.previewStage.style.fontVariationSettings = "";
+  applyLocation(dom.previewStage, null);
   renderPreviewPlaceholder();
 }
 
@@ -702,7 +704,7 @@ function applyPreview() {
   if (!isLive()) return;
   const location = locationAt();
   dom.previewStage.style.fontFamily = `"${state.previewFace.family}", var(--font-display)`;
-  dom.previewStage.style.fontVariationSettings = variationCss(location);
+  applyLocation(dom.previewStage, location);
   dom.previewValues.textContent = Object.entries(location)
     .map(([tag, value]) => `"${tag}" ${formatNumber(value)}`)
     .join(", ");
@@ -753,7 +755,7 @@ function renderMatrix() {
       });
       const location = locationAt(positions);
       cell.style.fontFamily = `"${state.previewFace.family}", var(--font-display)`;
-      cell.style.fontVariationSettings = variationCss(location);
+      applyLocation(cell, location);
       cell.title = Object.entries(location)
         .map(([tag, value]) => `${tag} ${formatNumber(value)}`)
         .join(" · ");

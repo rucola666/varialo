@@ -430,6 +430,19 @@ def main():
         "paths": [str(tmp / "export.bin"), otf[1]], "labels": ["A", "B"], "axes": axes_for(1)}), str(tmp / "re.ttf")))
     checks += 1
 
+    # 22. Direction: a distorted contour that loops over itself flips its signed
+    # area but is not reversed (every point still sits next to its partner);
+    # a contour read backwards is.
+    ring = [(0, 0, True), (25, 0, True), (50, 0, True), (75, 0, True), (100, 0, True),
+            (100, 40, True), (75, 40, True), (50, 40, True), (25, 40, True), (0, 40, True)]
+    looped = [(0, 0, True), (25, 0, True), (50, 100, True), (75, 0, True), (100, 0, True),
+              (100, 40, True), (75, 40, True), (50, -60, True), (25, 40, True), (0, 40, True)]
+    assert engine._signed_area(ring) * engine._signed_area(looped) < 0
+    assert not engine._looks_reversed(ring, looped)
+    backwards = [ring[0]] + ring[:0:-1]
+    assert engine._looks_reversed(ring, backwards)
+    checks += 1
+
     print(f"All {checks} engine checks passed.")
 
 

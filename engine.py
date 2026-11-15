@@ -385,6 +385,27 @@ def _compare_glyph(base, other, cubic):
     return problems, hl_base, hl_other
 
 
+def _looks_reversed(pa, pb):
+    """True when the other contour really runs the opposite way.
+
+    The signed area alone is not enough: an outline whose points were moved
+    (distortions, "shattered" effects) can loop over itself, and its area
+    changes sign while every point still sits next to its partner. A contour
+    is reversed only if reading its points backwards matches clearly better
+    than reading them forwards."""
+    na = _normalise(pa, _bbox([pa]))
+    nb = _normalise(pb, _bbox([pb]))
+    count = len(na)
+
+    def mismatch(seq):
+        return sum(math.hypot(p[0] - q[0], p[1] - q[1]) for p, q in zip(na, seq)) / count
+
+    forward = min(mismatch(nb[k:] + nb[:k]) for k in range(count))
+    backward_points = nb[::-1]
+    backward = min(mismatch(backward_points[k:] + backward_points[:k]) for k in range(count))
+    return backward < forward * 0.6
+
+
 def _compare_glyph_warnings(base, other, cubic):
     """Problems that do not block the build but make the blend look wrong."""
     warnings = []
@@ -406,7 +427,7 @@ def _compare_glyph_warnings(base, other, cubic):
         if len(pa) != len(pb) or len(pa) < 3:
             continue
         area_a, area_b = _signed_area(pa), _signed_area(pb)
-        if area_a * area_b < 0:
+        if area_a * area_b < 0 and _looks_reversed(pa, pb):
             warnings.append(_msg("direction", contour=ci + 1))
             hl_base["contours"].add(ci)
             hl_other["contours"].add(ci)

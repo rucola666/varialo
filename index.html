@@ -26,6 +26,16 @@
           <p class="tagline" data-i18n="hero.tagline"></p>
         </div>
         <div class="masthead-tools">
+          <details class="about howto">
+            <summary data-i18n="hero.howto"></summary>
+            <div class="about-body howto-body">
+              <ol class="steps">
+                <li><span class="step-num">1</span><span data-i18n="steps.1"></span></li>
+                <li><span class="step-num">2</span><span data-i18n="steps.2"></span></li>
+                <li><span class="step-num">3</span><span data-i18n="steps.3"></span></li>
+              </ol>
+            </div>
+          </details>
           <details class="about">
             <summary data-i18n="hero.about"></summary>
             <div class="about-body">
@@ -41,14 +51,31 @@
           </div>
         </div>
       </div>
-      <ol class="steps">
-        <li><span class="step-num">1</span><span data-i18n="steps.1"></span></li>
-        <li><span class="step-num">2</span><span data-i18n="steps.2"></span></li>
-        <li><span class="step-num">3</span><span data-i18n="steps.3"></span></li>
-      </ol>
     </header>
 
     <main class="workspace">
+      <section class="panel info-panel" aria-labelledby="info-title">
+        <div class="panel-head">
+          <h2 id="info-title" data-i18n="info.title"></h2>
+        </div>
+        <div class="info-export">
+          <div class="export-fields">
+            <label class="field">
+              <span data-i18n="info.familyName"></span>
+              <input id="family-name" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.familyPlaceholder" />
+            </label>
+            <label class="field">
+              <span data-i18n="info.designer"></span>
+              <input id="designer" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.designerPlaceholder" />
+            </label>
+          </div>
+          <p class="field-note" data-i18n="info.exportNote"></p>
+        </div>
+        <details id="info-sources" class="info-sources fold">
+          <summary data-i18n="info.sourcesTitle"></summary>
+          <div id="font-info" class="info-table-wrap"></div>
+        </details>
+      </section>
       <div class="work-row top-row">
         <section id="library-panel" class="panel library-panel" aria-labelledby="library-title">
           <div class="panel-head">
@@ -99,6 +126,7 @@
 
           <div class="actions">
             <button id="build-button" class="button primary" type="button" data-i18n="space.build"></button>
+            <button id="download-button" class="button download-button" type="button" disabled data-i18n="space.download"></button>
           </div>
 
           <div class="status" aria-live="polite">
@@ -114,34 +142,6 @@
         </div>
         <div id="report"></div>
       </section>
-
-      <div class="work-row bottom-row">
-        <section class="panel info-panel" aria-labelledby="info-title">
-          <div class="panel-head">
-            <h2 id="info-title" data-i18n="info.title"></h2>
-          </div>
-          <div class="info-export">
-            <h3 data-i18n="info.exportTitle"></h3>
-            <div class="export-fields">
-              <label class="field">
-                <span data-i18n="info.familyName"></span>
-                <input id="family-name" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.familyPlaceholder" />
-              </label>
-              <label class="field">
-                <span data-i18n="info.designer"></span>
-                <input id="designer" type="text" autocomplete="off" spellcheck="false" data-i18n-placeholder="info.designerPlaceholder" />
-              </label>
-            </div>
-            <p class="field-note" data-i18n="info.exportNote"></p>
-            <button id="download-button" class="button download-button" type="button" disabled data-i18n="space.download"></button>
-          </div>
-          <details id="info-sources" class="info-sources fold">
-            <summary data-i18n="info.sourcesTitle"></summary>
-            <div id="font-info" class="info-table-wrap"></div>
-          </details>
-        </section>
-
-      </div>
 
       <section id="preview-panel" class="panel preview-panel" aria-labelledby="preview-title">
           <div class="panel-head">

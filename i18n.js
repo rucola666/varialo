@@ -8,6 +8,7 @@ const STRINGS = {
     "meta.description":
       "Carica i font statici sui vertici della rappresentazione spaziale e genera un font variabile direttamente nel browser.",
     "hero.tagline": "Varialo trasforma font compatibili in un unico font.",
+    "hero.howto": "Come si usa",
     "hero.about": "About",
     "hero.aboutText1": "Un font variabile contiene più disegni (master) dello stesso carattere e permette di passare dall'uno all'altro in modo continuo. Ogni master sta su un vertice della rappresentazione spaziale: una linea per un asse, un quadrato per due, un cubo per tre. Puoi partire da font statici o da font variabili: questi ultimi vengono “spacchettati” nei loro angoli.",
     "hero.aboutText2":
@@ -137,7 +138,6 @@ const STRINGS = {
     "preview.empty": "I cursori degli assi compaiono qui dopo la generazione.",
 
     "info.title": "Info font",
-    "info.exportTitle": "Font variabile esportato",
     "info.familyName": "Nome della famiglia",
     "info.familyPlaceholder": "es. Corso Sans Variable",
     "info.designer": "Autore",
@@ -236,6 +236,7 @@ const STRINGS = {
     "meta.description":
       "Load static fonts onto the vertices of a design space and generate a variable font right in the browser.",
     "hero.tagline": "Varialo turns compatible fonts into a single font.",
+    "hero.howto": "How to",
     "hero.about": "About",
     "hero.aboutText1": "A variable font contains several drawings (masters) of the same typeface and lets you move smoothly between them. Each master sits on a vertex of the design space: a line for one axis, a square for two, a cube for three. You can start from static fonts or from variable fonts: those get “unpacked” into their corners.",
     "hero.aboutText2":
@@ -365,7 +366,6 @@ const STRINGS = {
     "preview.empty": "Axis sliders appear here after building.",
 
     "info.title": "Font info",
-    "info.exportTitle": "Exported variable font",
     "info.familyName": "Family name",
     "info.familyPlaceholder": "e.g. Course Sans Variable",
     "info.designer": "Author",

@@ -2774,3 +2774,37 @@ svg .space-point {
     grid-column: 1 / -1;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Round 8: "How to" dropdown, Font info first, download under build   */
+/* ------------------------------------------------------------------ */
+
+.howto-body {
+  display: block;
+  width: min(520px, calc(100vw - 2 * var(--gutter)));
+}
+
+.howto-body .steps {
+  grid-template-columns: 1fr;
+  border-bottom: 0;
+}
+
+.howto-body .steps li {
+  padding: 10px 0;
+}
+
+.howto-body .steps li + li {
+  padding-left: 0;
+  border-left: 0;
+  border-top: 1px solid var(--muted);
+}
+
+.howto-body .step-num {
+  border-color: var(--paper-light);
+}
+
+.actions .download-button {
+  margin-top: 0;
+  border: 0;
+  border-top: var(--line);
+}

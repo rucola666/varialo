@@ -3,7 +3,7 @@
 // the min/max values of up to three of their axes).
 
 import { applyLocation, el, formatNumber, variableFontFace } from "./dom.js";
-import { pickLetters, readFontInfo } from "./fontinfo.js";
+import { pickLetter, readFontInfo } from "./fontinfo.js";
 import { t } from "./i18n.js";
 
 export const MAX_UNPACKED_AXES = 3;
@@ -203,8 +203,7 @@ export function renderLibrary(
   }
   let looseGrid = null;
   for (const item of library) {
-    const letters = pickLetters([item.info]);
-    const letter = letters.matrix;
+    const letter = pickLetter([item.info]);
     if (item.kind === "static") {
       if (!looseGrid) {
         looseGrid = el("div", "tile-grid");
@@ -245,7 +244,7 @@ export function renderLibrary(
     toggle.setAttribute("aria-expanded", String(item.open));
     toggle.title = t(item.open ? "library.collapse" : "library.expand");
     toggle.addEventListener("click", () => onToggle(item.id));
-    const glyph = el("span", "folder-glyph", letters.variable);
+    const glyph = el("span", "folder-glyph", letter);
     if (item.family) glyph.style.fontFamily = `"${item.family}", var(--font-display)`;
     const text = el("span", "lib-text");
     const axesText = item.info.axes.map((axis) => `${axis.tag} ${formatNumber(axis.min)}–${formatNumber(axis.max)}`).join(" · ");

@@ -1070,6 +1070,24 @@ def _export_one(entry, folder=None):
     return buffer.getvalue(), base + ext
 
 
+def rename_variable_font(request_json, input_path, output_path):
+    """Write name and author into an already built variable font.
+
+    Renaming does not change the outlines, so it does not need a new build."""
+    request = json.loads(request_json)
+    try:
+        font = TTFont(input_path)
+        family_name = (request.get("familyName") or "").strip() or _name(font, 16, 1) or "Varialo Variable"
+        designer = (request.get("designer") or "").strip() or None
+        _rename_family(font, family_name, designer)
+        if not designer:
+            font["name"].removeNames(nameID=9)
+        font.save(output_path)
+        return json.dumps({"ok": True, "familyName": family_name, "outputPath": output_path})
+    except Exception as exc:
+        return json.dumps({"ok": False, "error": str(exc) or exc.__class__.__name__})
+
+
 def export_master(request_json, output_path):
     """Write one static master (original file, or a corner of a variable font)."""
     entry = json.loads(request_json)

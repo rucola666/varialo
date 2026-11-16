@@ -4,7 +4,7 @@ import { applyLocation, el, formatNumber, variableFontFace, variationCss } from 
 import { corners, importFile, itemName, renderLibrary, resolve } from "./library.js";
 import { renderReport } from "./report.js";
 import { renderSpace, updateSpace } from "./space.js";
-import { pickLetters } from "./fontinfo.js";
+import { pickLetter } from "./fontinfo.js";
 
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const KEYS = "abcdefgh";
@@ -28,7 +28,7 @@ const state = {
   fsPaths: {}, // library item id -> path in the Pyodide file system
   builds: new Map(), // configuration signature -> {result, build, positions}
   buildSignature: null, // signature of the font currently shown
-  letters: { matrix: "M", variable: "V" }, // M for masters, V for the variable font
+  letter: "A", // shown on tiles, vertices and in the preview
   previewMode: "word", // letter | word | pangram
   previewEdited: false, // the student typed their own text
 };
@@ -93,7 +93,7 @@ function updateLetter() {
     .map((key) => resolve(state.library, state.vertices[key])?.info)
     .filter(Boolean);
   const infos = placed.length ? placed : state.library.map((item) => item.info);
-  state.letters = pickLetters(infos);
+  state.letter = pickLetter(infos);
   refreshPreviewText();
 }
 
@@ -310,7 +310,7 @@ function renderMiniPreview() {
 const PREVIEW_SIZES = { letter: 280, word: 140, pangram: 56 };
 
 function previewText(mode) {
-  if (mode === "letter") return isLive() ? state.letters.variable : state.letters.matrix;
+  if (mode === "letter") return state.letter;
   return adaptToGlyphs(t(mode === "word" ? "preview.word" : "preview.pangram"), previewSource()?.info);
 }
 
@@ -352,8 +352,6 @@ function configSignature() {
       return [ref.item, ref.child ?? null, resolve(state.library, ref)?.location ?? null];
     }),
     axes: activeAxes().map((axis) => [axis.tag, axis.name.trim(), Number(axis.start), Number(axis.end)]),
-    family: dom.familyName.value.trim(),
-    designer: dom.designer.value.trim(),
   });
 }
 
@@ -441,8 +439,7 @@ function spaceContext() {
     axes: state.axes,
     sources: sources(),
     selected: state.selected,
-    letter: state.letters.matrix,
-    variableLetter: state.letters.variable,
+    letter: state.letter,
     refAt: (key) => state.vertices[key] ?? null,
     pointFont: isLive() ? { family: state.previewFace.family, location: locationAt() } : null,
     errorList: dom.axisErrors,
@@ -637,7 +634,13 @@ async function handleBuild({ silent = false } = {}) {
 
     const bytes = pyodide.FS.readFile(result.outputPath);
     const fileBase = (result.familyName || "Varialo Variable").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
-    state.build = { bytes, axes: result.axes, fileName: `${fileBase || "Varialo-Variable"}.ttf` };
+    state.build = {
+      bytes,
+      path: result.outputPath,
+      axes: result.axes,
+      fileName: `${fileBase || "Varialo-Variable"}.ttf`,
+      names: exportNames(),
+    };
     state.buildSignature = signature;
     await loadPreviewFont(bytes);
     dom.downloadButton.disabled = false;
@@ -740,16 +743,34 @@ async function downloadFolder(id) {
   }
 }
 
-function handleDownload() {
+function exportNames() {
+  return { familyName: dom.familyName.value.trim() || null, designer: dom.designer.value.trim() || null };
+}
+
+// Name and author are written at download time: changing them never
+// rebuilds the font (the outlines stay the same).
+async function handleDownload() {
   if (!state.build) return;
-  const url = URL.createObjectURL(new Blob([state.build.bytes], { type: "font/ttf" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = state.build.fileName;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const names = exportNames();
+  let { bytes, fileName } = state.build;
+  if (JSON.stringify(names) !== JSON.stringify(state.build.names)) {
+    try {
+      const pyodide = await ensureEngine();
+      const fn = pyodide.globals.get("rename_variable_font");
+      const output = `/tmp/renamed-${Date.now()}.ttf`;
+      const result = JSON.parse(fn(JSON.stringify(names), state.build.path, output));
+      fn.destroy?.();
+      if (!result.ok) throw new Error(result.error);
+      bytes = pyodide.FS.readFile(output);
+      const base = result.familyName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+      fileName = `${base || "Varialo-Variable"}.ttf`;
+    } catch (error) {
+      console.error(error);
+      setStatus("error", "status.exportFailed", { error: error.message || String(error) });
+      return;
+    }
+  }
+  saveBytes(bytes, fileName, "font/ttf");
 }
 
 // ---------------------------------------------------------------------------
@@ -883,7 +904,7 @@ function renderMatrix() {
       const positions = [...state.positions];
       positions[0] = column;
       if (twoD) positions[1] = row;
-      const cell = el("button", "instance-cell", state.letters.variable);
+      const cell = el("button", "instance-cell", state.letter);
       cell.type = "button";
       cell.classList.toggle("is-current", near(state.positions[0], column) && (!twoD || near(state.positions[1], row)));
       cell.addEventListener("click", () => {
@@ -1069,13 +1090,18 @@ for (const button of dom.modeButtons) {
 dom.previewStage.addEventListener("input", () => {
   state.previewEdited = true;
 });
+// Only one of the header dropdowns ("How to", "About") open at a time.
+const headerMenus = [...document.querySelectorAll(".masthead-tools details")];
+headerMenus.forEach((menu) =>
+  menu.addEventListener("toggle", () => {
+    if (menu.open) headerMenus.forEach((other) => other !== menu && (other.open = false));
+  }),
+);
 dom.familyName.addEventListener("input", () => {
   state.exportEdited.family = dom.familyName.value.trim() !== "";
-  if (state.build) scheduleRebuild();
 });
 dom.designer.addEventListener("input", () => {
   state.exportEdited.designer = dom.designer.value.trim() !== "";
-  if (state.build) scheduleRebuild();
 });
 
 setLanguage(initialLanguage());

@@ -124,32 +124,18 @@ function readCmap(view, start) {
   };
 }
 
-// Letters shown in the interface: "M" for a matrix (a master / static font),
-// "V" for a variable font. When a font lacks them, the first glyph available
-// from "a" is used, keeping the two letters different when possible.
-const FALLBACK_ORDER = [..."abcdefghijklmnopqrstuvwxyz", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789"];
+// The letter shown on tiles, vertices and in the preview: always "A".
+// Only a font without "A" gets the first letter it has.
+const FALLBACK_ORDER = [..."Aabcdefghijklmnopqrstuvwxyz", ..."BCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789"];
 
-export function pickLetter(infos, preferred = "M", avoid = null) {
+export function pickLetter(infos) {
   const list = infos.filter((info) => info?.hasChar);
-  if (!list.length) return preferred;
-  const order = [preferred, ...FALLBACK_ORDER.filter((letter) => letter !== preferred)];
   const has = (info, letter) => info.hasChar(letter.codePointAt(0));
-  for (const letter of order) {
-    if (letter !== avoid && list.every((info) => has(info, letter))) return letter;
-  }
-  for (const letter of order) {
-    if (list.every((info) => has(info, letter))) return letter;
-  }
-  for (const letter of order) {
-    if (has(list[0], letter)) return letter;
-  }
-  return preferred;
-}
-
-export function pickLetters(infos) {
-  const matrix = pickLetter(infos, "M");
-  const variable = pickLetter(infos, "V", matrix);
-  return { matrix, variable };
+  return (
+    FALLBACK_ORDER.find((letter) => list.every((info) => has(info, letter))) ??
+    FALLBACK_ORDER.find((letter) => list.length && has(list[0], letter)) ??
+    "A"
+  );
 }
 
 export function readFontInfo(buffer) {

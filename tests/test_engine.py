@@ -443,6 +443,17 @@ def main():
     assert engine._looks_reversed(ring, backwards)
     checks += 1
 
+    # 23. Renaming a built font without rebuilding it
+    built = tmp / "tobe-renamed.ttf"
+    assert build(engine, otf[:2], built)["ok"]
+    renamed = tmp / "renamed.ttf"
+    res = json.loads(engine.rename_variable_font(json.dumps({"familyName": "Nuovo Nome", "designer": "Edo"}), str(built), str(renamed)))
+    assert res["ok"] and res["familyName"] == "Nuovo Nome", res
+    font = TTFont(renamed)
+    assert font["name"].getDebugName(1) == "Nuovo Nome" and font["name"].getDebugName(9) == "Edo"
+    assert "fvar" in font and font["glyf"].keys() == TTFont(built)["glyf"].keys()
+    checks += 1
+
     print(f"All {checks} engine checks passed.")
 
 
